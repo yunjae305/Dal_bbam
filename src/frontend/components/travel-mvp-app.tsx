@@ -50,7 +50,7 @@ const categoryIcons: Record<Category, LucideIcon> = {
   축제: CalendarDays
 };
 
-export function TravelMvpApp({ initialData }: { initialData: MvpData }) {
+export function TravelMvpApp({ initialData, userEmail }: { initialData: MvpData; userEmail?: string | null }) {
   const [data, setData] = useState(initialData);
   const [tab, setTab] = useState<TabId>('home');
   const [lang, setLang] = useState<Lang>('ko');
@@ -61,6 +61,7 @@ export function TravelMvpApp({ initialData }: { initialData: MvpData }) {
   const [recommended, setRecommended] = useState<Course>(initialData.courses[0]);
   const [loading, setLoading] = useState(false);
   const [apiMode, setApiMode] = useState('seed-data');
+  const [loggingOut, setLoggingOut] = useState(false);
 
   const heroPlace = data.places[0];
   const visibleShorts: ClipWithPlace[] = data.shorts.map(short => ({
@@ -144,6 +145,16 @@ export function TravelMvpApp({ initialData }: { initialData: MvpData }) {
     setApiMode(result.mode);
   }
 
+  async function handleLogout() {
+    setLoggingOut(true);
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+      window.location.href = '/login';
+    } finally {
+      setLoggingOut(false);
+    }
+  }
+
   return (
     <main className="min-h-dvh bg-[#eef3ee] text-[#13221f]">
       <header className="sticky top-0 z-40 border-b border-[#dbe6df] bg-[#f7faf6]/95 backdrop-blur">
@@ -180,6 +191,16 @@ export function TravelMvpApp({ initialData }: { initialData: MvpData }) {
                 ))}
               </select>
             </label>
+            {userEmail && (
+              <button
+                className="hidden h-10 items-center gap-2 rounded-full border border-[#dbe6df] bg-white px-4 text-[13px] font-black text-[#697672] sm:flex hover:border-red-200 hover:text-red-600 transition-colors"
+                onClick={handleLogout}
+                disabled={loggingOut}
+              >
+                {loggingOut ? <Loader2 size={14} className="animate-spin" /> : null}
+                로그아웃
+              </button>
+            )}
           </div>
         </div>
       </header>
