@@ -2,9 +2,11 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Eye, EyeOff, Loader2, Lock, Mail, Sparkles } from 'lucide-react';
+import { Eye, EyeOff, Info, Loader2, Lock, Mail, Sparkles } from 'lucide-react';
 
 type Mode = 'login' | 'signup';
+
+const isSupabaseConfigured = Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL);
 
 export default function LoginPage() {
   const router = useRouter();
@@ -18,6 +20,13 @@ export default function LoginPage() {
 
   function switchMode(next: Mode) {
     setMode(next);
+    setError('');
+    setMessage('');
+  }
+
+  function fillDemo() {
+    setEmail('demo@gyeongju.com');
+    setPassword('gyeongju2024');
     setError('');
     setMessage('');
   }
@@ -62,6 +71,7 @@ export default function LoginPage() {
         </div>
 
         <div className="rounded-2xl bg-white p-8 shadow-2xl">
+          {/* 탭 */}
           <div className="mb-6 flex rounded-lg bg-[#f2f6f2] p-1">
             <button
               type="button"
@@ -79,6 +89,22 @@ export default function LoginPage() {
             </button>
           </div>
 
+          {/* 데모 계정 힌트 (Supabase 미설정 시) */}
+          {!isSupabaseConfigured && mode === 'login' && (
+            <button
+              type="button"
+              onClick={fillDemo}
+              className="mb-4 flex w-full items-center gap-2 rounded-lg border border-[#c8ddd4] bg-[#eef7f1] px-4 py-3 text-left text-[12px] font-black text-[#12372f] transition hover:bg-[#dff0e8]"
+            >
+              <Info size={14} className="shrink-0" />
+              <span>
+                데모 계정 자동 입력 &nbsp;·&nbsp;
+                <span className="font-bold text-[#697672]">demo@gyeongju.com / gyeongju2024</span>
+              </span>
+            </button>
+          )}
+
+          {/* 폼 */}
           <form onSubmit={handleSubmit} className="grid gap-4">
             <label className="grid gap-1.5">
               <span className="text-[12px] font-black text-[#697672]">이메일</span>

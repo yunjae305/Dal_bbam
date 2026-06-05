@@ -1,4 +1,5 @@
 import { createSupabaseServerClient } from '@/backend/supabase/server';
+import { SESSION_COOKIE } from '@/backend/auth/session';
 import { NextResponse } from 'next/server';
 
 export async function POST() {
@@ -7,5 +8,13 @@ export async function POST() {
     await supabase.auth.signOut();
   }
 
-  return NextResponse.json({ success: true });
+  const res = NextResponse.json({ success: true });
+  res.cookies.set(SESSION_COOKIE, '', {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge: 0,
+    path: '/'
+  });
+  return res;
 }
