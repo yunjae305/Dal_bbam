@@ -181,45 +181,38 @@ export default function LoginPage() {
                 />
               </div>
             ) : (
-              <>
-                <label className="mb-3 block">
-                  <span className="mb-1.5 block pl-3 text-[12px] font-bold text-white drop-shadow">아이디/이메일</span>
-                  <input
-                    type="email"
-                    required
-                    inputMode="email"
-                    autoComplete="email"
-                    className="h-12 w-full rounded-full border-0 bg-white px-7 text-center text-[14px] font-semibold text-[#2f2928] shadow-[0_8px_24px_rgba(0,0,0,0.22)] outline-none placeholder:text-[#9a9a9a] focus:ring-4 focus:ring-white/35"
-                    placeholder="example@example.com"
-                    value={email}
-                    onChange={e => setEmail(e.target.value)}
-                  />
-                </label>
-
-                <label className="mb-5 block">
-                  <span className="mb-1.5 block pl-3 text-[12px] font-bold text-white drop-shadow">비밀번호</span>
-                  <div className="flex h-12 items-center rounded-full bg-white px-7 shadow-[0_8px_24px_rgba(0,0,0,0.22)] focus-within:ring-4 focus-within:ring-white/35">
-                    <input
-                      type={showPassword ? 'text' : 'password'}
-                      required
-                      minLength={1}
-                      autoComplete="current-password"
-                      className="min-w-0 flex-1 bg-transparent text-center text-[20px] font-bold tracking-[0.28em] text-[#8aa0a0] outline-none placeholder:text-[#9a9a9a]"
-                      placeholder="••••••••"
-                      value={password}
-                      onChange={e => setPassword(e.target.value)}
-                    />
+              <div className="mb-5 grid gap-4">
+                <AuthInput
+                  icon={Mail}
+                  type="email"
+                  required
+                  inputMode="email"
+                  autoComplete="email"
+                  placeholder="이메일 주소"
+                  value={email}
+                  onChange={setEmail}
+                />
+                <AuthInput
+                  icon={Lock}
+                  type={showPassword ? 'text' : 'password'}
+                  required
+                  minLength={1}
+                  autoComplete="current-password"
+                  placeholder="비밀번호"
+                  value={password}
+                  onChange={setPassword}
+                  trailing={(
                     <button
                       type="button"
                       onClick={() => setShowPassword(v => !v)}
-                      className="-mr-2 grid h-9 w-9 shrink-0 place-items-center rounded-full text-[#7b8080]"
+                      className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[#7b8080]"
                       aria-label={showPassword ? '비밀번호 숨기기' : '비밀번호 보기'}
                     >
-                      {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
+                      {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                     </button>
-                  </div>
-                </label>
-              </>
+                  )}
+                />
+              </div>
             )}
 
             {(error || message) && (
