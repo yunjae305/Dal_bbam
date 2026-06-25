@@ -2,8 +2,13 @@ import { createSupabaseServerClient } from '@/backend/supabase/server';
 import { NextResponse } from 'next/server';
 
 export async function POST(request: Request) {
-  const { email, password } = await request.json() as { email: string; password: string };
+  const { email, name, password } = await request.json() as { email: string; name?: string; password: string };
   const { origin } = new URL(request.url);
+  const trimmedName = name?.trim() ?? '';
+
+  if (trimmedName.length < 2) {
+    return NextResponse.json({ error: '이름은 2자 이상 입력해 주세요.' }, { status: 400 });
+  }
 
   const supabase = await createSupabaseServerClient();
   if (!supabase) {
@@ -14,7 +19,11 @@ export async function POST(request: Request) {
     email,
     password,
     options: {
-      emailRedirectTo: `${origin}/api/auth/callback`
+      emailRedirectTo: `${origin}/api/auth/callback`,
+      data: {
+        name: trimmedName,
+        full_name: trimmedName
+      }
     }
   });
   if (error) {
