@@ -110,7 +110,7 @@ export default function LoginPage() {
                 inputMode="email"
                 autoComplete="email"
                 className="h-12 w-full rounded-full border-0 bg-white px-7 text-center text-[14px] font-semibold text-[#2f2928] shadow-[0_8px_24px_rgba(0,0,0,0.22)] outline-none placeholder:text-[#9a9a9a] focus:ring-4 focus:ring-white/35"
-                placeholder={isSignup ? '인증받을 이메일' : 'example@example.com'}
+                placeholder={isSignup ? 'example@gmail.com' : 'example@example.com'}
                 value={email}
                 onChange={e => setEmail(e.target.value)}
               />
@@ -183,24 +183,26 @@ export default function LoginPage() {
               </button>
             )}
 
-            <div className="mt-6 grid gap-3 px-3">
-              <button
-                type="button"
-                onClick={() => showSocialNotice('카카오')}
-                className="flex h-11 items-center justify-center gap-3 rounded-sm bg-[#fee500] text-[13px] font-black text-[#191919] shadow-[0_8px_20px_rgba(0,0,0,0.25)]"
-              >
-                <MessageCircle size={19} fill="#191919" strokeWidth={0} />
-                카카오 로그인
-              </button>
-              <button
-                type="button"
-                onClick={() => showSocialNotice('Google')}
-                className="flex h-10 items-center justify-center gap-3 rounded-sm bg-white text-[12px] font-black text-[#4a4a4a] shadow-[0_8px_20px_rgba(0,0,0,0.22)]"
-              >
-                <img src="/google-logo.svg" alt="" className="h-[18px] w-[18px]" aria-hidden="true" />
-                Continue with Google
-              </button>
-            </div>
+            {!isSignup && (
+              <div className="mt-6 grid gap-3 px-3">
+                <button
+                  type="button"
+                  onClick={() => showSocialNotice('카카오')}
+                  className="flex h-11 items-center justify-center gap-3 rounded-sm bg-[#fee500] text-[13px] font-black text-[#191919] shadow-[0_8px_20px_rgba(0,0,0,0.25)]"
+                >
+                  <MessageCircle size={19} fill="#191919" strokeWidth={0} />
+                  카카오 로그인
+                </button>
+                <button
+                  type="button"
+                  onClick={() => showSocialNotice('Google')}
+                  className="flex h-10 items-center justify-center gap-3 rounded-sm bg-white text-[12px] font-black text-[#4a4a4a] shadow-[0_8px_20px_rgba(0,0,0,0.22)]"
+                >
+                  <img src="/google-logo.svg" alt="" className="h-[18px] w-[18px]" aria-hidden="true" />
+                  Continue with Google
+                </button>
+              </div>
+            )}
           </form>
         </div>
       </section>
