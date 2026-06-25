@@ -56,7 +56,7 @@ export default function LoginPage() {
       if (!res.ok) {
         setError(result.error ?? '오류가 발생했습니다.');
       } else if (isSignup) {
-        setMessage('가입 확인 메일을 보냈습니다. 메일함을 확인해 주세요.');
+        setMessage('인증 메일을 보냈습니다. 메일의 링크를 눌러 인증하면 회원가입이 완료됩니다.');
       } else {
         router.push('/');
         router.refresh();
@@ -101,14 +101,16 @@ export default function LoginPage() {
             </div>
 
             <label className="mb-3 block">
-              <span className="mb-1.5 block pl-3 text-[12px] font-bold text-white drop-shadow">아이디/이메일</span>
+              <span className="mb-1.5 block pl-3 text-[12px] font-bold text-white drop-shadow">
+                {isSignup ? '이메일' : '아이디/이메일'}
+              </span>
               <input
                 type="email"
                 required
                 inputMode="email"
                 autoComplete="email"
                 className="h-12 w-full rounded-full border-0 bg-white px-7 text-center text-[14px] font-semibold text-[#2f2928] shadow-[0_8px_24px_rgba(0,0,0,0.22)] outline-none placeholder:text-[#9a9a9a] focus:ring-4 focus:ring-white/35"
-                placeholder="example@example.com"
+                placeholder={isSignup ? '인증받을 이메일' : 'example@example.com'}
                 value={email}
                 onChange={e => setEmail(e.target.value)}
               />
