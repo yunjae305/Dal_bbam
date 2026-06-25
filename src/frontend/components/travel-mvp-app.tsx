@@ -120,7 +120,6 @@ export function TravelMvpApp({ initialData, userEmail }: { initialData: MvpData;
           )}
           {tab === 'home' && homePanel === 'all' && (
             <HomeAllScreen
-              places={initialData.places}
               onClose={() => setHomePanel('main')}
               onCategory={filter => {
                 setMapFilter(filter);
@@ -287,12 +286,10 @@ function HomeScreen({
 }
 
 function HomeAllScreen({
-  places,
   onClose,
   onCategory,
   onOpenStamp
 }: {
-  places: Place[];
   onClose: () => void;
   onCategory: (filter: MapFilter) => void;
   onOpenStamp: () => void;
@@ -312,22 +309,7 @@ function HomeAllScreen({
           </button>
         </div>
 
-        <button
-          className="mt-5 grid w-full grid-cols-[48px_1fr_72px] items-center gap-3 rounded-2xl bg-white p-3 text-left shadow-sm ring-1 ring-black/5"
-          type="button"
-          onClick={onOpenStamp}
-        >
-          <span className="grid h-12 w-12 place-items-center rounded-full bg-[#fff1ec] text-[#ff5b4f]">
-            <Check size={22} />
-          </span>
-          <span className="min-w-0">
-            <strong className="block truncate text-[15px] font-black">경주 스탬프 투어</strong>
-            <span className="mt-1 block text-[10px] font-bold leading-4 text-[#8f98a6]">방문지를 돌며 스탬프와 달밤 포인트를 모아요.</span>
-          </span>
-          <img className="h-14 w-[72px] rounded-xl object-cover" src={places[0]?.image} alt="" />
-        </button>
-
-        <div className="mt-4 grid grid-cols-4 gap-3">
+        <div className="mt-5 grid grid-cols-4 gap-3">
           {homeCategories.filter(item => item.label !== '전체보기').map(({ label, icon: Icon, filter, tab }) => (
             <button
               key={label}
@@ -343,6 +325,14 @@ function HomeAllScreen({
               {label}
             </button>
           ))}
+          <button
+            className="flex min-h-[64px] flex-col items-center justify-center gap-1.5 rounded-2xl bg-white text-[10px] font-black text-[#25211d] shadow-sm ring-1 ring-black/5"
+            type="button"
+            onClick={onOpenStamp}
+          >
+            <Check size={22} strokeWidth={2} />
+            스탬프 투어
+          </button>
         </div>
       </div>
     </section>
