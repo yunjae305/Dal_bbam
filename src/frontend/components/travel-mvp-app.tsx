@@ -298,9 +298,9 @@ function HomeAllScreen({
   onOpenStamp: () => void;
 }) {
   return (
-    <section className="absolute inset-0 z-50 flex items-end bg-black/42 px-4 backdrop-blur-[2px]">
+    <section className="absolute inset-0 z-50 bg-black/42 px-4 pt-[250px] backdrop-blur-[2px]">
       <button className="absolute inset-0 cursor-default" type="button" aria-label="전체보기 닫기" onClick={onClose} />
-      <div className="relative w-full rounded-t-[28px] bg-[#fbfaf8] px-5 pb-[calc(env(safe-area-inset-bottom)+22px)] pt-4 shadow-[0_-16px_42px_rgba(0,0,0,.24)]">
+      <div className="relative w-full rounded-[28px] bg-[#fbfaf8] px-5 pb-5 pt-4 shadow-[0_18px_46px_rgba(0,0,0,.28)]">
         <div className="mx-auto mb-4 h-1.5 w-12 rounded-full bg-[#d8d1c7]" />
         <div className="flex items-start justify-between gap-4">
           <div>
