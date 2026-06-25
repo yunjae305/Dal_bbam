@@ -88,7 +88,7 @@ export function TravelMvpApp({ initialData, userEmail }: { initialData: MvpData;
   }, [initialData.places, mapFilter, query]);
 
   const screenLabel = tab === 'home'
-    ? homePanel === 'stamp' ? '스탬프 투어' : homePanel === 'all' ? '홈 전체보기' : '홈 카테고리'
+    ? homePanel === 'stamp' ? '스탬프 투어' : '홈 카테고리'
     : tab === 'course'
       ? 'AI 추천 코스'
       : tab === 'map'
@@ -102,7 +102,7 @@ export function TravelMvpApp({ initialData, userEmail }: { initialData: MvpData;
       <div className="mx-auto min-h-dvh w-full max-w-[430px] bg-[#f7f7f7]">
         <div className="bg-[#1f1f1f] px-5 py-3 text-[13px] font-bold text-white/35">{screenLabel}</div>
         <div className="relative min-h-[calc(100dvh-40px)] overflow-hidden bg-[#f7f7f7] pb-[76px]">
-          {tab === 'home' && homePanel === 'main' && (
+          {tab === 'home' && homePanel !== 'stamp' && (
             <HomeScreen
               places={initialData.places}
               query={query}
@@ -121,10 +121,13 @@ export function TravelMvpApp({ initialData, userEmail }: { initialData: MvpData;
           {tab === 'home' && homePanel === 'all' && (
             <HomeAllScreen
               places={initialData.places}
-              onBack={() => setHomePanel('main')}
+              onClose={() => setHomePanel('main')}
+              onCategory={filter => {
+                setMapFilter(filter);
+                setHomePanel('main');
+                setTab('map');
+              }}
               onOpenStamp={() => setHomePanel('stamp')}
-              onOpenCourse={() => setTab('course')}
-              onOpenCart={() => setTab('my')}
             />
           )}
           {tab === 'home' && homePanel === 'stamp' && (
@@ -285,54 +288,60 @@ function HomeScreen({
 
 function HomeAllScreen({
   places,
-  onBack,
-  onOpenStamp,
-  onOpenCourse,
-  onOpenCart
+  onClose,
+  onCategory,
+  onOpenStamp
 }: {
   places: Place[];
-  onBack: () => void;
+  onClose: () => void;
+  onCategory: (filter: MapFilter) => void;
   onOpenStamp: () => void;
-  onOpenCourse: () => void;
-  onOpenCart: () => void;
 }) {
   return (
-    <section className="min-h-[calc(100dvh-40px)] bg-[#fbfaf8]">
-      <PhoneStatus />
-      <HeaderBar title="전체보기" left={<button type="button" onClick={onBack}><ChevronLeft size={20} /></button>} />
-      <div className="px-5">
-        <h1 className="mt-4 text-[24px] font-black tracking-[-0.03em]">경주에서 할 일</h1>
-        <p className="mt-2 text-[12px] font-bold leading-5 text-[#8f98a6]">추천, 코스, 이벤트를 한곳에서 골라보세요.</p>
-
-        <div className="mt-5 grid gap-3">
-          <FeatureRow
-            icon={Check}
-            title="경주 스탬프 투어"
-            body="방문지를 돌며 스탬프와 달밤 포인트를 모아요."
-            image={places[0]?.image}
-            onClick={onOpenStamp}
-          />
-          <FeatureRow
-            icon={Sparkles}
-            title="AI 추천 코스"
-            body="취향에 맞는 경주 여행 동선을 추천받아요."
-            image={places[1]?.image}
-            onClick={onOpenCourse}
-          />
-          <FeatureRow
-            icon={Heart}
-            title="여행 장바구니"
-            body="찜한 장소를 모아 일정으로 보내요."
-            image={places[2]?.image}
-            onClick={onOpenCart}
-          />
+    <section className="absolute inset-0 z-50 flex items-end bg-black/42 px-4 backdrop-blur-[2px]">
+      <button className="absolute inset-0 cursor-default" type="button" aria-label="전체보기 닫기" onClick={onClose} />
+      <div className="relative w-full rounded-t-[28px] bg-[#fbfaf8] px-5 pb-[calc(env(safe-area-inset-bottom)+22px)] pt-4 shadow-[0_-16px_42px_rgba(0,0,0,.24)]">
+        <div className="mx-auto mb-4 h-1.5 w-12 rounded-full bg-[#d8d1c7]" />
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-[22px] font-black tracking-[-0.03em]">전체보기</h1>
+            <p className="mt-1 text-[11px] font-bold text-[#8f98a6]">카테고리와 투어를 선택해 이동하세요.</p>
+          </div>
+          <button className="grid h-8 w-8 place-items-center rounded-full bg-[#f1f2f4] text-[#69707c]" type="button" onClick={onClose} aria-label="닫기">
+            <X size={17} />
+          </button>
         </div>
 
-        <Divider />
-        <SectionHeader title="추천 장소" />
-        <div className="grid grid-cols-2 gap-3">
-          {places.slice(0, 4).map(place => (
-            <CartPlaceCard key={place.id} place={place} picked={false} />
+        <button
+          className="mt-5 grid w-full grid-cols-[48px_1fr_72px] items-center gap-3 rounded-2xl bg-white p-3 text-left shadow-sm ring-1 ring-black/5"
+          type="button"
+          onClick={onOpenStamp}
+        >
+          <span className="grid h-12 w-12 place-items-center rounded-full bg-[#fff1ec] text-[#ff5b4f]">
+            <Check size={22} />
+          </span>
+          <span className="min-w-0">
+            <strong className="block truncate text-[15px] font-black">경주 스탬프 투어</strong>
+            <span className="mt-1 block text-[10px] font-bold leading-4 text-[#8f98a6]">방문지를 돌며 스탬프와 달밤 포인트를 모아요.</span>
+          </span>
+          <img className="h-14 w-[72px] rounded-xl object-cover" src={places[0]?.image} alt="" />
+        </button>
+
+        <div className="mt-4 grid grid-cols-4 gap-3">
+          {homeCategories.filter(item => item.label !== '전체보기').map(({ label, icon: Icon, filter, tab }) => (
+            <button
+              key={label}
+              className="flex min-h-[64px] flex-col items-center justify-center gap-1.5 rounded-2xl bg-white text-[10px] font-black text-[#25211d] shadow-sm ring-1 ring-black/5"
+              type="button"
+              onClick={() => {
+                if (filter) {
+                  onCategory(filter);
+                }
+              }}
+            >
+              <Icon size={22} strokeWidth={1.8} />
+              {label}
+            </button>
           ))}
         </div>
       </div>
