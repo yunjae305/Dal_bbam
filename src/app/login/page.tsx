@@ -195,7 +195,7 @@ export default function LoginPage() {
                 onClick={() => showSocialNotice('Google')}
                 className="flex h-10 items-center justify-center gap-3 rounded-sm bg-white text-[12px] font-black text-[#4a4a4a] shadow-[0_8px_20px_rgba(0,0,0,0.22)]"
               >
-                <span className="text-[18px] font-black text-[#4285f4]">G</span>
+                <img src="/google-logo.svg" alt="" className="h-[18px] w-[18px]" aria-hidden="true" />
                 Continue with Google
               </button>
             </div>
