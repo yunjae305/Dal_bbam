@@ -16,7 +16,9 @@ import {
   Map,
   MapPin,
   Menu,
+  MessageCircle,
   Navigation,
+  PlaySquare,
   Plus,
   Search,
   Settings2,
@@ -31,12 +33,23 @@ import type { LucideIcon } from 'lucide-react';
 import type { Category, MvpData, Place } from '@/shared/types';
 
 type TabId = 'home' | 'course' | 'map' | 'calendar' | 'my';
+type HomePanel = 'main' | 'all' | 'stamp';
 type MapFilter = '전체' | '관광지' | '맛집' | '숙박' | '문화재';
 
 const mapFilters: MapFilter[] = ['전체', '관광지', '맛집', '숙박', '문화재'];
 const courseFilters = ['전체', '야경', '문화유산', '가족', '맛집', '힐링'];
 const cartFilters = ['전체 (12)', '야경', '유적', '일정', '산책', '자연'];
 const stampLabels = ['동궁과 월지', '첨성대', '대릉원', '불국사', '교촌마을', '황리단길', '석굴암', '불국사', '문무왕릉'];
+const homeCategories: Array<{ label: string; icon: LucideIcon; filter?: MapFilter; panel?: HomePanel; tab?: TabId }> = [
+  { label: '관광지', icon: Landmark, filter: '관광지' },
+  { label: '맛집', icon: Utensils, filter: '맛집' },
+  { label: '체험', icon: Sparkles },
+  { label: '축제', icon: CalendarDays },
+  { label: '지도', icon: Map, filter: '전체' },
+  { label: '쇼츠', icon: PlaySquare },
+  { label: '커뮤니티', icon: MessageCircle },
+  { label: '전체보기', icon: CircleUserRound, panel: 'all' }
+];
 
 const navItems: Array<[TabId, string, LucideIcon]> = [
   ['home', '홈', Home],
@@ -55,6 +68,7 @@ function filterToCategory(filter: MapFilter): Category {
 
 export function TravelMvpApp({ initialData, userEmail }: { initialData: MvpData; userEmail?: string | null }) {
   const [tab, setTab] = useState<TabId>('home');
+  const [homePanel, setHomePanel] = useState<HomePanel>('main');
   const [query, setQuery] = useState('');
   const [mapFilter, setMapFilter] = useState<MapFilter>('전체');
   const [selectedPlaceId, setSelectedPlaceId] = useState(initialData.places[0]?.id ?? '');
@@ -74,7 +88,7 @@ export function TravelMvpApp({ initialData, userEmail }: { initialData: MvpData;
   }, [initialData.places, mapFilter, query]);
 
   const screenLabel = tab === 'home'
-    ? '스탬프 투어'
+    ? homePanel === 'stamp' ? '스탬프 투어' : homePanel === 'all' ? '홈 전체보기' : '홈 카테고리'
     : tab === 'course'
       ? 'AI 추천 코스'
       : tab === 'map'
@@ -88,7 +102,34 @@ export function TravelMvpApp({ initialData, userEmail }: { initialData: MvpData;
       <div className="mx-auto min-h-dvh w-full max-w-[430px] bg-[#f7f7f7]">
         <div className="bg-[#1f1f1f] px-5 py-3 text-[13px] font-bold text-white/35">{screenLabel}</div>
         <div className="relative min-h-[calc(100dvh-40px)] overflow-hidden bg-[#f7f7f7] pb-[76px]">
-          {tab === 'home' && <StampTourScreen places={initialData.places} onExplore={() => setTab('course')} />}
+          {tab === 'home' && homePanel === 'main' && (
+            <HomeScreen
+              places={initialData.places}
+              query={query}
+              setQuery={setQuery}
+              onSearch={() => {
+                setMapFilter('전체');
+                setTab('map');
+              }}
+              onCategory={filter => {
+                setMapFilter(filter);
+                setTab('map');
+              }}
+              onOpenAll={() => setHomePanel('all')}
+            />
+          )}
+          {tab === 'home' && homePanel === 'all' && (
+            <HomeAllScreen
+              places={initialData.places}
+              onBack={() => setHomePanel('main')}
+              onOpenStamp={() => setHomePanel('stamp')}
+              onOpenCourse={() => setTab('course')}
+              onOpenCart={() => setTab('my')}
+            />
+          )}
+          {tab === 'home' && homePanel === 'stamp' && (
+            <StampTourScreen places={initialData.places} onBack={() => setHomePanel('all')} onExplore={() => setTab('course')} />
+          )}
           {tab === 'course' && <AiCourseScreen places={initialData.places} />}
           {tab === 'map' && (
             <MapScreen
@@ -107,7 +148,15 @@ export function TravelMvpApp({ initialData, userEmail }: { initialData: MvpData;
           {tab === 'calendar' && <ItineraryScreen places={initialData.places} />}
           {tab === 'my' && <TravelCartScreen places={initialData.places} userEmail={userEmail} />}
 
-          <BottomNav current={tab} onChange={setTab} />
+          <BottomNav
+            current={tab}
+            onChange={nextTab => {
+              setTab(nextTab);
+              if (nextTab === 'home') {
+                setHomePanel('main');
+              }
+            }}
+          />
         </div>
       </div>
     </main>
@@ -127,9 +176,179 @@ function PhoneStatus({ dark = false }: { dark?: boolean }) {
   );
 }
 
-function StampTourScreen({ places, onExplore }: { places: Place[]; onExplore: () => void }) {
+function HomeScreen({
+  places,
+  query,
+  setQuery,
+  onSearch,
+  onCategory,
+  onOpenAll
+}: {
+  places: Place[];
+  query: string;
+  setQuery: (query: string) => void;
+  onSearch: () => void;
+  onCategory: (filter: MapFilter) => void;
+  onOpenAll: () => void;
+}) {
+  const hero = places[0];
+
+  return (
+    <section className="min-h-[calc(100dvh-40px)] bg-[#f5f1ea]">
+      <div className="relative min-h-[284px] bg-[#2d2a26] text-white">
+        <img
+          className="absolute inset-0 h-full w-full object-cover"
+          src={hero.image}
+          alt=""
+          onError={event => { event.currentTarget.src = '/login-spring-bg.png'; }}
+        />
+        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,.08),rgba(0,0,0,.2)_48%,rgba(0,0,0,.46))]" />
+        <div className="relative z-10">
+          <PhoneStatus dark />
+          <div className="px-6 pt-8">
+            <p className="text-[11px] font-bold text-white/85">경주, 신라와 달밤</p>
+            <h1 className="mt-1 max-w-[190px] text-[18px] font-black leading-[1.25]">
+              특별한 하루를<br />시작해볼까요?🌙
+            </h1>
+          </div>
+        </div>
+
+        <form
+          className="absolute inset-x-8 bottom-[76px] z-20 flex h-9 items-center gap-2 rounded-full bg-white/92 px-4 text-[#2d2925] shadow-[0_8px_24px_rgba(0,0,0,.24)]"
+          onSubmit={event => {
+            event.preventDefault();
+            onSearch();
+          }}
+        >
+          <Search size={15} />
+          <input
+            className="min-w-0 flex-1 bg-transparent text-[11px] font-semibold outline-none placeholder:text-[#817b73]"
+            value={query}
+            onChange={event => setQuery(event.target.value)}
+            placeholder="어디로 떠나볼까요?"
+          />
+          {query ? (
+            <button type="button" onClick={() => setQuery('')} aria-label="검색어 지우기">
+              <X size={15} />
+            </button>
+          ) : (
+            <Settings2 size={15} />
+          )}
+        </form>
+
+        <div className="absolute inset-x-10 bottom-[-56px] z-20 rounded-xl bg-[#eee9df]/95 px-4 py-3 shadow-[0_10px_28px_rgba(0,0,0,.28)]">
+          <div className="grid grid-cols-4 gap-y-3">
+            {homeCategories.map(({ label, icon: Icon, filter, panel }) => (
+              <button
+                key={label}
+                className="flex flex-col items-center gap-1 text-[10px] font-bold text-[#25211d]"
+                type="button"
+                onClick={() => {
+                  if (panel === 'all') {
+                    onOpenAll();
+                  } else if (filter) {
+                    onCategory(filter);
+                  }
+                }}
+              >
+                <Icon size={21} strokeWidth={1.8} />
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="px-5 pt-[72px]">
+        <SectionHeader title="오늘의 추천" action="전체보기 >" onAction={onOpenAll} />
+        <div className="grid grid-cols-3 gap-4 px-4">
+          {places.slice(0, 3).map(place => (
+            <button key={place.id} className="text-center" onClick={() => onCategory('전체')} type="button">
+              <span className="block aspect-square rounded-lg bg-[#d8d8d8]">
+                <img className="h-full w-full rounded-lg object-cover opacity-80" src={place.image} alt="" />
+              </span>
+              <span className="mt-3 block truncate text-[11px] font-bold">{place.name}</span>
+            </button>
+          ))}
+        </div>
+
+        <Divider />
+        <SectionHeader title="테마 코스 추천" action="전체보기 >" onAction={onOpenAll} />
+        <div className="space-y-5 px-3">
+          <CoursePreview image={places[0]?.image} title="OO님, 이런 야경 산책 코스 어때요?" />
+          <CoursePreview image={places[1]?.image} title="맛집 추천 코스" />
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function HomeAllScreen({
+  places,
+  onBack,
+  onOpenStamp,
+  onOpenCourse,
+  onOpenCart
+}: {
+  places: Place[];
+  onBack: () => void;
+  onOpenStamp: () => void;
+  onOpenCourse: () => void;
+  onOpenCart: () => void;
+}) {
+  return (
+    <section className="min-h-[calc(100dvh-40px)] bg-[#fbfaf8]">
+      <PhoneStatus />
+      <HeaderBar title="전체보기" left={<button type="button" onClick={onBack}><ChevronLeft size={20} /></button>} />
+      <div className="px-5">
+        <h1 className="mt-4 text-[24px] font-black tracking-[-0.03em]">경주에서 할 일</h1>
+        <p className="mt-2 text-[12px] font-bold leading-5 text-[#8f98a6]">추천, 코스, 이벤트를 한곳에서 골라보세요.</p>
+
+        <div className="mt-5 grid gap-3">
+          <FeatureRow
+            icon={Check}
+            title="경주 스탬프 투어"
+            body="방문지를 돌며 스탬프와 달밤 포인트를 모아요."
+            image={places[0]?.image}
+            onClick={onOpenStamp}
+          />
+          <FeatureRow
+            icon={Sparkles}
+            title="AI 추천 코스"
+            body="취향에 맞는 경주 여행 동선을 추천받아요."
+            image={places[1]?.image}
+            onClick={onOpenCourse}
+          />
+          <FeatureRow
+            icon={Heart}
+            title="여행 장바구니"
+            body="찜한 장소를 모아 일정으로 보내요."
+            image={places[2]?.image}
+            onClick={onOpenCart}
+          />
+        </div>
+
+        <Divider />
+        <SectionHeader title="추천 장소" />
+        <div className="grid grid-cols-2 gap-3">
+          {places.slice(0, 4).map(place => (
+            <CartPlaceCard key={place.id} place={place} picked={false} />
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function StampTourScreen({ places, onExplore, onBack }: { places: Place[]; onExplore: () => void; onBack?: () => void }) {
   return (
     <section className="min-h-[calc(100dvh-40px)] bg-[#fbfaf8] px-5 pt-5">
+      {onBack && (
+        <button className="mb-3 flex items-center gap-1 text-[12px] font-black text-[#6b7280]" type="button" onClick={onBack}>
+          <ChevronLeft size={17} />
+          전체보기
+        </button>
+      )}
       <div className="rounded-[24px] bg-white px-5 pb-5 pt-6 shadow-[0_16px_36px_rgba(18,24,40,.08)]">
         <p className="text-[11px] font-black text-[#ff6f5e]">방문하고 모으는</p>
         <h1 className="mt-1 text-[26px] font-black tracking-[-0.03em] text-[#202631]">경주 스탬프 투어</h1>
@@ -418,6 +637,61 @@ function HeaderBar({ title, subtitle, left, right }: { title: string; subtitle?:
       <div className="justify-self-end text-[#111827]">{right}</div>
     </header>
   );
+}
+
+function SectionHeader({ title, action, onAction }: { title: string; action?: string; onAction?: () => void }) {
+  return (
+    <div className="mb-4 flex items-center justify-between px-1">
+      <h2 className="text-[15px] font-bold">{title}</h2>
+      {action && (
+        <button className="text-[10px] font-semibold text-[#c4877e]" type="button" onClick={onAction}>
+          {action}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function FeatureRow({
+  icon: Icon,
+  title,
+  body,
+  image,
+  onClick
+}: {
+  icon: LucideIcon;
+  title: string;
+  body: string;
+  image?: string;
+  onClick: () => void;
+}) {
+  return (
+    <button className="grid grid-cols-[44px_1fr_72px] items-center gap-3 rounded-2xl border border-[#edf0f4] bg-white p-3 text-left shadow-sm" type="button" onClick={onClick}>
+      <span className="grid h-11 w-11 place-items-center rounded-full bg-[#fff1ec] text-[#ff5b4f]">
+        <Icon size={20} />
+      </span>
+      <span className="min-w-0">
+        <strong className="block truncate text-[14px] font-black">{title}</strong>
+        <span className="mt-1 block line-clamp-2 text-[10px] font-bold leading-4 text-[#8f98a6]">{body}</span>
+      </span>
+      {image && <img className="h-14 w-[72px] rounded-xl object-cover" src={image} alt="" />}
+    </button>
+  );
+}
+
+function CoursePreview({ image, title }: { image?: string; title: string }) {
+  return (
+    <article>
+      <div className="h-[118px] overflow-hidden rounded-lg bg-[#d8d8d8]">
+        {image && <img className="h-full w-full object-cover opacity-65" src={image} alt="" />}
+      </div>
+      <p className="mt-3 text-[11px] font-bold">{title}</p>
+    </article>
+  );
+}
+
+function Divider() {
+  return <div className="my-6 h-px bg-[#d8a59c]" />;
 }
 
 function Metric({ value, label }: { value: string; label: string }) {
