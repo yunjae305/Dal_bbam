@@ -7,7 +7,7 @@ export async function proxy(request: NextRequest) {
   const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
   const isLoginPage = request.nextUrl.pathname === '/login';
 
-  // Supabase 연동 시
+  // Supabase가 설정된 환경에서는 Supabase 세션을 사용합니다.
   if (supabaseUrl && supabaseKey) {
     const response = NextResponse.next({ request });
 
@@ -36,7 +36,7 @@ export async function proxy(request: NextRequest) {
     return response;
   }
 
-  // 자체 세션 쿠키 인증
+  // Supabase 미설정 환경에서는 자체 세션 쿠키 인증을 사용합니다.
   const token = request.cookies.get(SESSION_COOKIE)?.value;
   const session = token ? verifySessionToken(token) : null;
 
@@ -50,5 +50,5 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!api|_next/static|_next/image|favicon.ico|icon.svg|manifest.webmanifest|sw.js).*)']
+  matcher: ['/((?!api|_next/static|_next/image|favicon.ico|.*\\..*).*)']
 };

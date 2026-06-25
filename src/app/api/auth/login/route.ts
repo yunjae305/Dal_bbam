@@ -8,7 +8,7 @@ const DEMO_PASSWORD = process.env.LOGIN_PASSWORD ?? 'gyeongju2024';
 export async function POST(request: Request) {
   const { email, password } = await request.json() as { email: string; password: string };
 
-  // Supabase 연동 시 Supabase 인증 사용
+  // Supabase가 설정된 환경에서는 Supabase 인증을 사용합니다.
   const supabase = await createSupabaseServerClient();
   if (supabase) {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
@@ -18,7 +18,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: true });
   }
 
-  // Supabase 미설정 → 환경변수 자격증명으로 로그인
+  // Supabase 미설정 환경에서는 데모 계정으로 로그인합니다.
   if (email !== DEMO_EMAIL || password !== DEMO_PASSWORD) {
     return NextResponse.json({ error: '이메일 또는 비밀번호가 올바르지 않습니다.' }, { status: 401 });
   }

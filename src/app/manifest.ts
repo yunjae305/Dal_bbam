@@ -4,7 +4,7 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: 'AI와 함께하는 경주 역사 여행',
     short_name: 'AI 경주',
-    description: '쇼츠형 관광 콘텐츠와 다국어 코스 추천을 제공하는 경주 여행 PWA',
+    description: '일정과 관광 콘텐츠를 바탕으로 코스를 추천하는 경주 여행 PWA',
     start_url: '/',
     scope: '/',
     display: 'standalone',

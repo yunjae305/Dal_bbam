@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Eye, EyeOff, Info, Loader2, Lock, Mail, Sparkles } from 'lucide-react';
+import { Eye, EyeOff, Loader2, MessageCircle } from 'lucide-react';
 
 type Mode = 'login' | 'signup';
 
@@ -18,6 +18,8 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
 
+  const isSignup = mode === 'signup';
+
   function switchMode(next: Mode) {
     setMode(next);
     setError('');
@@ -31,6 +33,11 @@ export default function LoginPage() {
     setMessage('');
   }
 
+  function showSocialNotice(provider: string) {
+    setError('');
+    setMessage(`${provider} 로그인은 준비 중입니다.`);
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
@@ -38,7 +45,7 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const endpoint = mode === 'login' ? '/api/auth/login' : '/api/auth/signup';
+      const endpoint = isSignup ? '/api/auth/signup' : '/api/auth/login';
       const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -48,8 +55,8 @@ export default function LoginPage() {
 
       if (!res.ok) {
         setError(result.error ?? '오류가 발생했습니다.');
-      } else if (mode === 'signup') {
-        setMessage('가입 확인 이메일을 발송했습니다. 메일함을 확인해주세요.');
+      } else if (isSignup) {
+        setMessage('가입 확인 메일을 보냈습니다. 메일함을 확인해 주세요.');
       } else {
         router.push('/');
         router.refresh();
@@ -60,115 +67,141 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="flex min-h-dvh items-center justify-center bg-[#09221e] p-4">
-      <div className="w-full max-w-md">
-        <div className="mb-8 text-center">
-          <span className="mb-4 inline-grid h-16 w-16 place-items-center rounded-full border-2 border-white/20 bg-[#12372f] text-white">
-            <Sparkles size={28} />
-          </span>
-          <h1 className="text-[32px] font-black text-white">AI 경주</h1>
-          <p className="mt-1 text-[13px] font-bold text-white/60">History Travel PWA</p>
-        </div>
+    <main className="min-h-dvh bg-[#1d1d1d] text-white">
+      <section
+        className="relative mx-auto flex min-h-dvh w-full max-w-[430px] flex-col overflow-hidden bg-cover bg-center px-6 pb-[calc(env(safe-area-inset-bottom)+28px)] pt-[calc(env(safe-area-inset-top)+16px)] shadow-2xl"
+        style={{
+          backgroundImage:
+            "linear-gradient(180deg, rgba(0,0,0,0.26) 0%, rgba(0,0,0,0.08) 33%, rgba(0,0,0,0.36) 66%, rgba(0,0,0,0.64) 100%), url('/login-spring-bg.png')"
+        }}
+      >
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/55 via-black/20 to-transparent" />
 
-        <div className="rounded-2xl bg-white p-8 shadow-2xl">
-          {/* 탭 */}
-          <div className="mb-6 flex rounded-lg bg-[#f2f6f2] p-1">
-            <button
-              type="button"
-              className={`flex-1 rounded-md py-2 text-[13px] font-black transition ${mode === 'login' ? 'bg-white text-[#12372f] shadow' : 'text-[#697672]'}`}
-              onClick={() => switchMode('login')}
-            >
-              로그인
-            </button>
-            <button
-              type="button"
-              className={`flex-1 rounded-md py-2 text-[13px] font-black transition ${mode === 'signup' ? 'bg-white text-[#12372f] shadow' : 'text-[#697672]'}`}
-              onClick={() => switchMode('signup')}
-            >
-              회원가입
-            </button>
-          </div>
+        <header className="relative z-10 text-[12px] font-semibold tracking-[-0.01em] text-white/85">
+          로그인/회원가입
+        </header>
 
-          {/* 데모 계정 힌트 (Supabase 미설정 시) */}
-          {!isSupabaseConfigured && mode === 'login' && (
-            <button
-              type="button"
-              onClick={fillDemo}
-              className="mb-4 flex w-full items-center gap-2 rounded-lg border border-[#c8ddd4] bg-[#eef7f1] px-4 py-3 text-left text-[12px] font-black text-[#12372f] transition hover:bg-[#dff0e8]"
-            >
-              <Info size={14} className="shrink-0" />
-              <span>
-                데모 계정 자동 입력 &nbsp;·&nbsp;
-                <span className="font-bold text-[#697672]">demo@gyeongju.com / gyeongju2024</span>
-              </span>
-            </button>
-          )}
+        <div className="relative z-10 flex flex-1 flex-col justify-end">
+          <form onSubmit={handleSubmit} className="mx-auto w-full max-w-[340px] pb-4">
+            <div className="mb-4 flex items-center justify-center rounded-full bg-black/24 p-1 text-[12px] font-bold backdrop-blur-sm">
+              <button
+                type="button"
+                onClick={() => switchMode('login')}
+                className={`h-8 flex-1 rounded-full transition ${!isSignup ? 'bg-white text-[#2f2928]' : 'text-white/80'}`}
+              >
+                로그인
+              </button>
+              <button
+                type="button"
+                onClick={() => switchMode('signup')}
+                className={`h-8 flex-1 rounded-full transition ${isSignup ? 'bg-white text-[#2f2928]' : 'text-white/80'}`}
+              >
+                회원가입
+              </button>
+            </div>
 
-          {/* 폼 */}
-          <form onSubmit={handleSubmit} className="grid gap-4">
-            <label className="grid gap-1.5">
-              <span className="text-[12px] font-black text-[#697672]">이메일</span>
-              <div className="flex h-12 items-center gap-3 rounded-lg border border-[#dbe6df] bg-[#f7faf6] px-4">
-                <Mail size={16} className="shrink-0 text-[#12372f]" />
-                <input
-                  type="email"
-                  required
-                  className="min-w-0 flex-1 bg-transparent text-[14px] font-black outline-none placeholder:text-[#8b9894]"
-                  placeholder="이메일 주소"
-                  value={email}
-                  onChange={e => setEmail(e.target.value)}
-                />
-              </div>
+            <label className="mb-3 block">
+              <span className="mb-1.5 block pl-3 text-[12px] font-bold text-white drop-shadow">아이디/이메일</span>
+              <input
+                type="email"
+                required
+                inputMode="email"
+                autoComplete="email"
+                className="h-12 w-full rounded-full border-0 bg-white px-7 text-center text-[14px] font-semibold text-[#2f2928] shadow-[0_8px_24px_rgba(0,0,0,0.22)] outline-none placeholder:text-[#9a9a9a] focus:ring-4 focus:ring-white/35"
+                placeholder="example@example.com"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+              />
             </label>
 
-            <label className="grid gap-1.5">
-              <span className="text-[12px] font-black text-[#697672]">비밀번호</span>
-              <div className="flex h-12 items-center gap-3 rounded-lg border border-[#dbe6df] bg-[#f7faf6] px-4">
-                <Lock size={16} className="shrink-0 text-[#12372f]" />
+            <label className="mb-5 block">
+              <span className="mb-1.5 block pl-3 text-[12px] font-bold text-white drop-shadow">비밀번호</span>
+              <div className="flex h-12 items-center rounded-full bg-white px-7 shadow-[0_8px_24px_rgba(0,0,0,0.22)] focus-within:ring-4 focus-within:ring-white/35">
                 <input
                   type={showPassword ? 'text' : 'password'}
                   required
-                  minLength={mode === 'signup' ? 6 : 1}
-                  className="min-w-0 flex-1 bg-transparent text-[14px] font-black outline-none placeholder:text-[#8b9894]"
-                  placeholder={mode === 'signup' ? '6자 이상 입력' : '비밀번호'}
+                  minLength={isSignup ? 6 : 1}
+                  autoComplete={isSignup ? 'new-password' : 'current-password'}
+                  className="min-w-0 flex-1 bg-transparent text-center text-[20px] font-bold tracking-[0.28em] text-[#8aa0a0] outline-none placeholder:text-[#9a9a9a]"
+                  placeholder={isSignup ? '6자 이상' : '••••••••'}
                   value={password}
                   onChange={e => setPassword(e.target.value)}
                 />
                 <button
                   type="button"
-                  className="shrink-0"
                   onClick={() => setShowPassword(v => !v)}
+                  className="-mr-2 grid h-9 w-9 shrink-0 place-items-center rounded-full text-[#7b8080]"
                   aria-label={showPassword ? '비밀번호 숨기기' : '비밀번호 보기'}
                 >
-                  {showPassword
-                    ? <EyeOff size={16} className="text-[#697672]" />
-                    : <Eye size={16} className="text-[#697672]" />}
+                  {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
                 </button>
               </div>
             </label>
 
-            {error && (
-              <p className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-[13px] font-bold text-red-600">
-                {error}
-              </p>
-            )}
-            {message && (
-              <p className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-[13px] font-bold text-green-700">
-                {message}
+            {(error || message) && (
+              <p
+                className={`mb-3 rounded-2xl px-4 py-3 text-center text-[12px] font-bold shadow-lg backdrop-blur-md ${
+                  error ? 'bg-red-50/95 text-red-700' : 'bg-white/90 text-[#385145]'
+                }`}
+              >
+                {error || message}
               </p>
             )}
 
             <button
               type="submit"
               disabled={loading}
-              className="mt-2 flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-[#12372f] text-[14px] font-black text-white disabled:opacity-60"
+              className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-[#3d353a]/95 text-[13px] font-bold text-white shadow-[0_10px_28px_rgba(0,0,0,0.34)] transition active:scale-[0.99] disabled:opacity-65"
             >
-              {loading && <Loader2 className="animate-spin" size={18} />}
-              {mode === 'login' ? '로그인' : '가입하기'}
+              {loading && <Loader2 className="animate-spin" size={17} />}
+              {isSignup ? '가입하기' : '로그인'}
             </button>
+
+            <div className="mt-2 flex items-center justify-center gap-2 text-[11px] font-semibold text-white/75">
+              <button type="button" className="px-1" onClick={() => setMessage('비밀번호 찾기는 준비 중입니다.')}>
+                비밀번호 찾기
+              </button>
+              <span className="text-white/45">·</span>
+              <button
+                type="button"
+                className="px-1"
+                onClick={() => switchMode(isSignup ? 'login' : 'signup')}
+              >
+                {isSignup ? '로그인' : '회원가입'}
+              </button>
+            </div>
+
+            {!isSupabaseConfigured && !isSignup && (
+              <button
+                type="button"
+                onClick={fillDemo}
+                className="mx-auto mt-3 block rounded-full bg-black/30 px-4 py-2 text-[11px] font-bold text-white/85 backdrop-blur-sm"
+              >
+                데모 계정으로 채우기
+              </button>
+            )}
+
+            <div className="mt-6 grid gap-3 px-3">
+              <button
+                type="button"
+                onClick={() => showSocialNotice('카카오')}
+                className="flex h-11 items-center justify-center gap-3 rounded-sm bg-[#fee500] text-[13px] font-black text-[#191919] shadow-[0_8px_20px_rgba(0,0,0,0.25)]"
+              >
+                <MessageCircle size={19} fill="#191919" strokeWidth={0} />
+                카카오 로그인
+              </button>
+              <button
+                type="button"
+                onClick={() => showSocialNotice('Google')}
+                className="flex h-10 items-center justify-center gap-3 rounded-sm bg-white text-[12px] font-black text-[#4a4a4a] shadow-[0_8px_20px_rgba(0,0,0,0.22)]"
+              >
+                <span className="text-[18px] font-black text-[#4285f4]">G</span>
+                Continue with Google
+              </button>
+            </div>
           </form>
         </div>
-      </div>
+      </section>
     </main>
   );
 }

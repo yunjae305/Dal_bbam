@@ -4,7 +4,7 @@ import { ServiceWorkerRegister } from '@/frontend/components/service-worker-regi
 
 export const metadata: Metadata = {
   title: 'AI와 함께하는 경주 역사 여행',
-  description: '관광데이터 기반 경주 여행 PWA MVP',
+  description: '관광 데이터 기반 경주 여행 PWA MVP',
   applicationName: 'AI 경주',
   icons: {
     icon: '/icon.svg',
