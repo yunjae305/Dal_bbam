@@ -29,7 +29,7 @@ async function fetchPlacesFromTourAPI(contentTypeId, numOfRows = 30) {
     arrange: 'Q',
   });
 
-  const url = `https://apis.data.go.kr/B551011/KorService1/areaBasedList1?serviceKey=${TOUR_API_KEY}&${params}`;
+  const url = `https://apis.data.go.kr/B551011/KorService2/areaBasedList2?serviceKey=${TOUR_API_KEY}&${params}`;
   console.log(`  TourAPI 호출 중... (contentTypeId: ${contentTypeId})`);
 
   const res = await fetch(url);
