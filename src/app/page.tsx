@@ -1,6 +1,6 @@
 import { cookies } from 'next/headers';
 import { TravelMvpApp } from '@/frontend/components/travel-mvp-app';
-import { getMvpData } from '@/backend/data';
+import { getTourMvpData } from '@/backend/tour-mvp-data';
 import { createSupabaseServerClient } from '@/backend/supabase/server';
 import { verifySessionToken, SESSION_COOKIE } from '@/backend/auth/session';
 
@@ -8,16 +8,16 @@ export default async function Page() {
   const supabase = await createSupabaseServerClient();
 
   let userEmail: string | null = null;
+  const cookieStore = await cookies();
+  const token = cookieStore.get(SESSION_COOKIE)?.value;
 
-  if (supabase) {
-    userEmail = (await supabase.auth.getUser()).data.user?.email ?? null;
-  } else {
-    const cookieStore = await cookies();
-    const token = cookieStore.get(SESSION_COOKIE)?.value;
-    if (token) {
-      userEmail = verifySessionToken(token)?.email ?? null;
-    }
+  if (token) {
+    userEmail = verifySessionToken(token)?.email ?? null;
   }
 
-  return <TravelMvpApp initialData={getMvpData()} userEmail={userEmail} />;
+  if (!userEmail && supabase) {
+    userEmail = (await supabase.auth.getUser()).data.user?.email ?? null;
+  }
+
+  return <TravelMvpApp initialData={await getTourMvpData()} userEmail={userEmail} />;
 }

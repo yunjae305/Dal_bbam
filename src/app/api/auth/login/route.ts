@@ -2,8 +2,8 @@ import { createSupabaseServerClient } from '@/backend/supabase/server';
 import { createSessionToken, SESSION_COOKIE } from '@/backend/auth/session';
 import { NextResponse } from 'next/server';
 
-const DEMO_EMAIL = process.env.LOGIN_EMAIL ?? 'demo@gyeongju.com';
-const DEMO_PASSWORD = process.env.LOGIN_PASSWORD ?? 'gyeongju2024';
+const DEMO_EMAIL = process.env.DEMO_EMAIL ?? process.env.NEXT_PUBLIC_DEMO_EMAIL ?? process.env.LOGIN_EMAIL ?? 'demo@gyeongju.com';
+const DEMO_PASSWORD = process.env.DEMO_PASSWORD ?? process.env.NEXT_PUBLIC_DEMO_PASSWORD ?? process.env.LOGIN_PASSWORD ?? 'gyeongju2024';
 
 export async function POST(request: Request) {
   const { email, password } = await request.json() as { email: string; password: string };

@@ -40,6 +40,7 @@ const mapFilters: MapFilter[] = ['전체', '관광지', '맛집', '숙박', '문
 const courseFilters = ['전체', '야경', '문화유산', '가족', '맛집', '힐링'];
 const cartFilters = ['전체 (12)', '야경', '유적', '일정', '산책', '자연'];
 const stampLabels = ['동궁과 월지', '첨성대', '대릉원', '불국사', '교촌마을', '황리단길', '석굴암', '불국사', '문무왕릉'];
+const homeHeroImage = 'https://commons.wikimedia.org/wiki/Special:FilePath/Water_reflection_of_Donggung_Palace_in_Wolji_Pond_at_blue_hour_in_Gyeongju_South_Korea.jpg';
 const homeCategories: Array<{ label: string; icon: LucideIcon; filter?: MapFilter; panel?: HomePanel; tab?: TabId }> = [
   { label: '관광지', icon: Landmark, filter: '관광지' },
   { label: '맛집', icon: Utensils, filter: '맛집' },
@@ -193,14 +194,12 @@ function HomeScreen({
   onCategory: (filter: MapFilter) => void;
   onOpenAll: () => void;
 }) {
-  const hero = places[0];
-
   return (
     <section className="min-h-[calc(100dvh-40px)] bg-[#f5f1ea]">
       <div className="relative min-h-[284px] bg-[#2d2a26] text-white">
         <img
           className="absolute inset-0 h-full w-full object-cover"
-          src={hero.image}
+          src={homeHeroImage}
           alt=""
           onError={event => { event.currentTarget.src = '/login-spring-bg.png'; }}
         />
