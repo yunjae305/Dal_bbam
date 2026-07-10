@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getTourPlaceDetail, TourApiConfigError, TourApiError } from '@/backend/tour-api';
+import { getTourPlaceDetail, TOUR_API_CACHE_CONTROL, TourApiConfigError, TourApiError } from '@/backend/tour-api';
 
 export const runtime = 'nodejs';
 
@@ -15,7 +15,7 @@ export async function GET(_request: Request, context: { params: Promise<{ conten
 
     return NextResponse.json({
       item: result.items[0] ?? null
-    });
+    }, { headers: { 'Cache-Control': TOUR_API_CACHE_CONTROL } });
   } catch (error) {
     if (error instanceof TourApiConfigError) {
       return NextResponse.json({ error: error.message }, { status: 500 });

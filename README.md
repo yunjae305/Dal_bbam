@@ -55,15 +55,22 @@ npm run dev
 npm run build
 ```
 
-## Supabase
+## Backend setup
 
-DB는 아직 확정 전이므로 현재는 seed 데이터를 사용합니다. Supabase 연결이 필요하면 `.env.example` 기준으로 값을 채우면 됩니다.
+`.env.example`을 `.env.local`로 복사한 뒤 필요한 서버 환경 변수를 설정합니다. `TOUR_API_KEY`, `SUPABASE_SECRET_KEY`, `KAKAO_CLIENT_SECRET`, `JWT_SECRET`, `DEMO_PASSWORD`는 `NEXT_PUBLIC_` 접두사를 붙이지 않으며 브라우저 번들에 포함하지 않습니다.
 
 ```text
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
 SUPABASE_SECRET_KEY=
+TOUR_API_KEY=
+KAKAO_CLIENT_ID=
+KAKAO_CLIENT_SECRET=
+KAKAO_REDIRECT_URI=
+JWT_SECRET=
 ```
+
+운영 환경의 `JWT_SECRET`은 32자 이상이어야 합니다. Supabase를 사용한다면 JWT/카카오 사용자 스탬프 저장을 위해 `supabase/migrations/20260710000000_backend_auth_stamps.sql`도 적용해야 합니다.
 
 ## API
 
@@ -74,3 +81,25 @@ SUPABASE_SECRET_KEY=
 - `POST /api/courses/recommend`
 - `GET /api/shorts`
 - `GET /api/supabase/status`
+- `GET /api/tour/places?pageNo=1&numOfRows=20&contentTypeId=12`
+- `GET /api/tour/search?keyword=불국사`
+- `GET /api/tour/nearby?mapX=129.332&mapY=35.7901&radius=2000`
+- `GET /api/tour/festivals?eventStartDate=20260710`
+- `GET /api/tour/places/:contentId`
+- `GET /api/tour/places/:contentId/images`
+- `GET /api/auth/kakao`
+- `GET /api/stamps`
+- `POST /api/stamps/verify`
+
+`POST /api/stamps/verify` 요청 예시:
+
+```json
+{
+  "placeId": "125780",
+  "lat": 35.7901,
+  "lng": 129.332,
+  "accuracyMeters": 20
+}
+```
+
+TourAPI 응답은 서버 메모리와 Next.js 데이터 캐시에 저장되고 CDN 캐시 헤더를 함께 반환합니다. 동일 키의 동시 요청은 하나로 합치며, 페이지 크기·좌표·반경·날짜·콘텐츠 유형을 서버에서 검증합니다.

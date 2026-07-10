@@ -9,7 +9,7 @@ export function getSupabaseEnv() {
     publishableKey,
     secretKey,
     serverKey,
-    configured: Boolean(url && serverKey),
+    configured: Boolean(url && secretKey),
     authConfigured: Boolean(url && publishableKey)
   };
 }
