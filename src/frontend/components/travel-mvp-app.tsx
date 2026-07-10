@@ -31,6 +31,9 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { Category, MvpData, Place } from '@/shared/types';
+import { StampTourScreen } from './travel/StampTourScreen';
+import { AiCourseScreen } from './travel/AiCourseScreen';
+import { TravelCartScreen } from './travel/TravelCartScreen';
 
 type TabId = 'home' | 'course' | 'map' | 'calendar' | 'my';
 type HomePanel = 'main' | 'all' | 'stamp';
@@ -338,101 +341,9 @@ function HomeAllScreen({
   );
 }
 
-function StampTourScreen({ places, onExplore, onBack }: { places: Place[]; onExplore: () => void; onBack?: () => void }) {
-  return (
-    <section className="min-h-[calc(100dvh-40px)] bg-[#fbfaf8] px-5 pt-5">
-      {onBack && (
-        <button className="mb-3 flex items-center gap-1 text-[12px] font-black text-[#6b7280]" type="button" onClick={onBack}>
-          <ChevronLeft size={17} />
-          전체보기
-        </button>
-      )}
-      <div className="rounded-[24px] bg-white px-5 pb-5 pt-6 shadow-[0_16px_36px_rgba(18,24,40,.08)]">
-        <p className="text-[11px] font-black text-[#ff6f5e]">방문하고 모으는</p>
-        <h1 className="mt-1 text-[26px] font-black tracking-[-0.03em] text-[#202631]">경주 스탬프 투어</h1>
+/* StampTourScreen moved to ./travel/StampTourScreen */
 
-        <div className="mt-5 rounded-xl border border-[#f1e4dd] bg-white p-4 shadow-sm">
-          <div className="flex items-center justify-between">
-            <p className="text-[12px] font-bold text-[#606875]">달밤 마스터까지 <span className="text-[#ff6b55]">5곳</span> 남았어요</p>
-            <p className="text-[11px] font-bold text-[#9aa1aa]">7 / 12</p>
-          </div>
-          <div className="mt-3 h-2 overflow-hidden rounded-full bg-[#fde5df]">
-            <div className="h-full w-[58%] rounded-full bg-[#ff6b55]" />
-          </div>
-          <div className="mt-4 grid grid-cols-3 text-center">
-            <Metric value="7" label="모은 스탬프" />
-            <Metric value="580" label="달빛 포인트" />
-            <Metric value="3" label="남은 보상" />
-          </div>
-        </div>
-
-        <div className="mt-4 flex items-center justify-between rounded-xl bg-[#fff4ea] px-4 py-3">
-          <div>
-            <p className="text-[12px] font-black text-[#303642]">스탬프 10개 모으면 달밤 배지</p>
-            <p className="mt-1 text-[10px] font-bold text-[#8d7768]">앞으로 3곳만 더 방문하면 돼요</p>
-          </div>
-          <button className="rounded-full bg-[#ff755f] px-4 py-2 text-[11px] font-black text-white" type="button" onClick={onExplore}>보상 보기</button>
-        </div>
-
-        <h2 className="mt-5 text-[17px] font-black tracking-[-0.02em]">경주 스탬프 도감</h2>
-        <p className="mt-1 text-[11px] font-bold text-[#8c929c]">방문지의 스탬프를 선택해 관광으로 떠나요</p>
-
-        <div className="mt-4 grid grid-cols-3 gap-x-5 gap-y-4">
-          {stampLabels.map((label, index) => {
-            const place = places[index % places.length];
-            const collected = index < 5;
-            return (
-              <button key={`${label}-${index}`} className="relative text-center" type="button">
-                <span className={`relative mx-auto grid h-[70px] w-[70px] place-items-center overflow-hidden rounded-full border-4 ${collected ? 'border-[#fff2e8]' : 'border-[#ece5db] grayscale'}`}>
-                  <img className={`h-full w-full object-cover ${collected ? '' : 'opacity-35'}`} src={place.image} alt="" />
-                  {!collected && (
-                    <span className="absolute inset-0 grid place-items-center bg-white/45">
-                      <LockKeyhole size={18} className="text-[#777]" />
-                    </span>
-                  )}
-                </span>
-                {collected && (
-                  <span className="absolute right-2 top-12 grid h-5 w-5 place-items-center rounded-full bg-[#ff6958] text-white">
-                    <Check size={13} strokeWidth={3} />
-                  </span>
-                )}
-                {index === 5 && <span className="absolute right-3 top-12 rounded-full bg-[#6bcf76] px-1.5 py-0.5 text-[9px] font-black text-white">1/5</span>}
-                <span className="mt-2 block truncate text-[10px] font-black text-[#303642]">{label}</span>
-                <span className="block text-[9px] font-bold text-[#ff7668]">{collected ? '획득 완료' : '미방문'}</span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function AiCourseScreen({ places }: { places: Place[] }) {
-  return (
-    <section className="min-h-[calc(100dvh-40px)] bg-[#fbfaf8]">
-      <PhoneStatus />
-      <HeaderBar title="AI 추천 코스" right={<Bookmark size={18} />} />
-      <div className="px-5">
-        <p className="mt-4 text-[11px] font-black text-[#8d95a1]">AI가 취향에 맞춰</p>
-        <h1 className="mt-1 text-[22px] font-black leading-tight tracking-[-0.03em]">경주 여행 코스를 추천해드려요</h1>
-        <p className="mt-2 text-[11px] font-semibold leading-5 text-[#9aa1aa]">테마별로 엄선한 코스로<br />완벽한 경주 여행을 즐겨보세요.</p>
-
-        <div className="mt-5 flex gap-2 overflow-x-auto pb-1">
-          {courseFilters.map((filter, index) => (
-            <Chip key={filter} active={index === 0}>{filter}</Chip>
-          ))}
-        </div>
-
-        <div className="mt-4 space-y-3">
-          {places.map((place, index) => (
-            <AiCourseCard key={place.id} place={place} index={index} />
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
+/* AiCourseScreen moved to ./travel/AiCourseScreen */
 
 function ItineraryScreen({ places }: { places: Place[] }) {
   return (
@@ -461,45 +372,7 @@ function ItineraryScreen({ places }: { places: Place[] }) {
   );
 }
 
-function TravelCartScreen({ places, userEmail }: { places: Place[]; userEmail?: string | null }) {
-  return (
-    <section className="min-h-[calc(100dvh-40px)] bg-[#fbfaf8]">
-      <PhoneStatus />
-      <HeaderBar title="여행 장바구니" left={<ChevronLeft size={20} />} right={<button className="text-[11px] font-black text-[#ff5146]" type="button">편집</button>} />
-      <div className="px-5">
-        <div className="mt-2 grid grid-cols-[1fr_1fr_1fr_32px] gap-2">
-          <button className="h-9 rounded-full bg-[#ff5b4f] text-[11px] font-black text-white" type="button">경주 2박 3일</button>
-          <button className="h-9 rounded-full bg-[#f1f2f4] text-[11px] font-bold text-[#8c95a1]" type="button">가을 여행 코스</button>
-          <button className="h-9 rounded-full bg-[#f1f2f4] text-[11px] font-bold text-[#8c95a1]" type="button">엄마랑 경주</button>
-          <button className="grid h-9 place-items-center rounded-full bg-[#f1f2f4]" type="button"><Plus size={15} /></button>
-        </div>
-
-        <MiniCartMap />
-        <p className="mt-2 text-[10px] font-bold text-[#9aa1aa]"><MapPin size={12} className="mr-1 inline text-[#ff5b4f]" />저장한 장소 <span className="text-[#ff5b4f]">12곳</span> · 지도에서 보기</p>
-
-        <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
-          {cartFilters.map((filter, index) => (
-            <Chip key={filter} active={index === 0}>{filter}</Chip>
-          ))}
-        </div>
-
-        <div className="mt-3 grid grid-cols-2 gap-3">
-          {places.concat(places).slice(0, 6).map((place, index) => (
-            <CartPlaceCard key={`${place.id}-${index}`} place={place} picked={index < 4} />
-          ))}
-        </div>
-
-        <div className="mt-3 flex items-center justify-between pb-2 text-[11px] font-black">
-          <span>선택 <b className="text-[#ff5b4f]">5곳</b></span>
-          <span className="text-[#8f98a6]">{userEmail ? userEmail.split('@')[0] : '여행자'}님 코스</span>
-        </div>
-        <button className="fixed bottom-[68px] left-1/2 z-30 h-12 w-[calc(100%-40px)] max-w-[390px] -translate-x-1/2 rounded-xl bg-[#ff5b4f] text-[13px] font-black text-white shadow-[0_12px_24px_rgba(255,91,79,.32)]" type="button">
-          선택한 장소 일정으로 보내기
-        </button>
-      </div>
-    </section>
-  );
-}
+/* TravelCartScreen moved to ./travel/TravelCartScreen */
 
 function MapScreen({
   places,
