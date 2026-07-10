@@ -19,7 +19,15 @@ export async function POST(request: Request) {
       await supabase.auth.signOut();
       return NextResponse.json({ error: '이메일 인증 후 로그인해 주세요.' }, { status: 403 });
     }
-    return NextResponse.json({ success: true });
+    const res = NextResponse.json({ success: true });
+    res.cookies.set(SESSION_COOKIE, createSessionToken(data.user.email ?? email), {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 60 * 60 * 24 * 7,
+      path: '/'
+    });
+    return res;
   }
 
   // Supabase 미설정 환경에서는 데모 계정으로 로그인합니다.

@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { Eye, EyeOff, Lock, Loader2, Mail, MessageCircle, UserRound } from 'lucide-react';
 
 type Mode = 'login' | 'signup';
@@ -10,7 +9,6 @@ const demoEmail = process.env.NEXT_PUBLIC_DEMO_EMAIL ?? 'demo@gyeongju.com';
 const demoPassword = process.env.NEXT_PUBLIC_DEMO_PASSWORD ?? 'gyeongju2024';
 
 export default function LoginPage() {
-  const router = useRouter();
   const [mode, setMode] = useState<Mode>('login');
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
@@ -84,6 +82,7 @@ export default function LoginPage() {
       const endpoint = isSignup ? '/api/auth/signup' : '/api/auth/login';
       const res = await fetch(endpoint, {
         method: 'POST',
+        credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, name: name.trim(), password })
       });
@@ -94,8 +93,7 @@ export default function LoginPage() {
       } else if (isSignup) {
         setMessage('인증 메일을 보냈습니다. 메일의 링크를 눌러 인증하면 회원가입이 완료됩니다.');
       } else {
-        router.push('/');
-        router.refresh();
+        window.location.replace('/');
       }
     } finally {
       setLoading(false);
