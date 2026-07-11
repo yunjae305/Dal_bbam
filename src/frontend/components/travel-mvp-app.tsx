@@ -31,9 +31,11 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { Category, MvpData, Place } from '@/shared/types';
-import { StampTourScreen } from './travel/StampTourScreen';
-import { AiCourseScreen } from './travel/AiCourseScreen';
-import { TravelCartScreen } from './travel/TravelCartScreen';
+import { StampTourScreen } from './travel/stamp-tour-screen';
+import { AiCourseScreen } from './travel/ai-course-screen';
+import { TravelCartScreen } from './travel/travel-cart-screen';
+import { ItineraryScreen } from './travel/itinerary-screen';
+import { PhoneStatus, HeaderBar, Chip, MapPattern, Metric } from '@/frontend/components/common/ui';
 
 type TabId = 'home' | 'course' | 'map' | 'calendar' | 'my';
 type HomePanel = 'main' | 'all' | 'stamp';
@@ -169,18 +171,6 @@ export function TravelMvpApp({ initialData, userEmail }: { initialData: MvpData;
   );
 }
 
-function PhoneStatus({ dark = false }: { dark?: boolean }) {
-  return (
-    <div className={`flex h-7 items-center justify-between px-5 text-[10px] font-bold ${dark ? 'text-white' : 'text-black'}`}>
-      <span>16:04</span>
-      <span className="flex items-center gap-1">
-        <span className={`h-2 w-4 rounded-sm border ${dark ? 'border-white' : 'border-black'}`} />
-        <span className={`h-2 w-3 rounded-sm ${dark ? 'bg-white' : 'bg-black'}`} />
-        <span className={`h-2 w-2 rounded-full ${dark ? 'bg-white' : 'bg-black'}`} />
-      </span>
-    </div>
-  );
-}
 
 function HomeScreen({
   places,
@@ -341,39 +331,6 @@ function HomeAllScreen({
   );
 }
 
-/* StampTourScreen moved to ./travel/StampTourScreen */
-
-/* AiCourseScreen moved to ./travel/AiCourseScreen */
-
-function ItineraryScreen({ places }: { places: Place[] }) {
-  return (
-    <section className="min-h-[calc(100dvh-40px)] bg-[#fbfaf8]">
-      <PhoneStatus />
-      <HeaderBar title="경주 2박 3일" subtitle="6/28-30 · 장소 5곳" left={<ChevronLeft size={20} />} right={<div className="flex gap-4"><Bookmark size={18} /><Share2 size={18} /></div>} />
-      <div className="px-5">
-        <p className="mt-2 text-[11px] font-black text-[#57759d]">전체 여행 경로</p>
-        <p className="mt-1 text-[9px] font-bold text-[#99a1ad]">선택한 5곳을 순서대로 연결한 전체 경로예요.</p>
-        <RouteMapCard places={places} />
-
-        <div className="mt-4 grid grid-cols-3 gap-2">
-          {['Day 1', 'Day 2', 'Day 3'].map((day, index) => (
-            <button key={day} className={`h-8 rounded-full text-[11px] font-black ${index === 0 ? 'bg-[#223c72] text-white' : 'bg-[#eff2f6] text-[#8f98a6]'}`} type="button">{day}</button>
-          ))}
-        </div>
-
-        <div className="mt-4 space-y-3">
-          {places.slice(0, 4).map((place, index) => (
-            <TimelineItem key={place.id} place={place} index={index} />
-          ))}
-          <button className="h-11 w-full rounded-xl border border-dashed border-[#cfd6df] bg-white text-[12px] font-black text-[#43628d]" type="button">+ 장소 추가</button>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-/* TravelCartScreen moved to ./travel/TravelCartScreen */
-
 function MapScreen({
   places,
   selectedPlace,
@@ -479,36 +436,7 @@ function MapCanvas({ places, selectedPlace, onSelect }: { places: Place[]; selec
   );
 }
 
-function MapPattern() {
-  return (
-    <div className="absolute inset-0 opacity-90">
-      <div className="absolute left-[-14%] top-[4%] h-[120%] w-[44%] rotate-[19deg] bg-[#d9ecda]" />
-      <div className="absolute right-[-24%] top-[7%] h-[70%] w-[52%] -rotate-[18deg] bg-[#d5ead7]" />
-      <div className="absolute left-[16%] top-0 h-full w-7 rotate-[24deg] bg-white shadow-[0_0_0_2px_#e2d7a8]" />
-      <div className="absolute left-[50%] top-[-10%] h-[120%] w-5 -rotate-[34deg] bg-white shadow-[0_0_0_2px_#e2d7a8]" />
-      <div className="absolute left-[-8%] top-[40%] h-6 w-[120%] -rotate-[12deg] bg-white shadow-[0_0_0_2px_#e2d7a8]" />
-      <div className="absolute left-[-10%] top-[63%] h-5 w-[125%] rotate-[3deg] bg-white shadow-[0_0_0_2px_#e2d7a8]" />
-      <div className="absolute left-[23%] top-[23%] h-4 w-[78%] rotate-[35deg] bg-[#f5cd6a]" />
-      <div className="absolute left-[8%] top-[78%] h-5 w-[80%] -rotate-[32deg] bg-[#f5cd6a]" />
-      <div className="absolute left-[-10%] top-[28%] h-3 w-[120%] rotate-[8deg] bg-[#8fc3f7]" />
-      <div className="absolute left-[62%] top-[8%] text-[11px] font-semibold text-[#6b8ea4]">황성강</div>
-      <div className="absolute left-[45%] top-[25%] text-[10px] font-semibold text-[#777]">황성공원</div>
-    </div>
-  );
-}
 
-function HeaderBar({ title, subtitle, left, right }: { title: string; subtitle?: string; left?: React.ReactNode; right?: React.ReactNode }) {
-  return (
-    <header className="grid h-11 grid-cols-[42px_1fr_42px] items-center px-4">
-      <div className="text-[#111827]">{left}</div>
-      <div className="text-center">
-        <h1 className="text-[14px] font-black">{title}</h1>
-        {subtitle && <p className="mt-0.5 text-[9px] font-bold text-[#8f98a6]">{subtitle}</p>}
-      </div>
-      <div className="justify-self-end text-[#111827]">{right}</div>
-    </header>
-  );
-}
 
 function SectionHeader({ title, action, onAction }: { title: string; action?: string; onAction?: () => void }) {
   return (
@@ -565,22 +493,7 @@ function Divider() {
   return <div className="my-6 h-px bg-[#d8a59c]" />;
 }
 
-function Metric({ value, label }: { value: string; label: string }) {
-  return (
-    <div>
-      <strong className="text-[22px] font-black text-[#ff5e4e]">{value}</strong>
-      <p className="mt-1 text-[9px] font-bold text-[#8d95a1]">{label}</p>
-    </div>
-  );
-}
 
-function Chip({ active, children }: { active?: boolean; children: React.ReactNode }) {
-  return (
-    <button className={`h-8 shrink-0 rounded-full px-4 text-[11px] font-bold ${active ? 'bg-[#ff5b4f] text-white' : 'bg-[#f1f2f4] text-[#8c95a1]'}`} type="button">
-      {children}
-    </button>
-  );
-}
 
 function AiCourseCard({ place, index }: { place: Place; index: number }) {
   const titles = ['가을 야경 코스 🌙', '엄마랑 경주 코스 🌿', '문화유산 집중 코스 🏛️', '맛집 포함 산책 코스 🍴', '힐링 산책 코스'];

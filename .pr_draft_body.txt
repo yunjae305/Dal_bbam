@@ -1,0 +1,36 @@
+Summary:
+- Created branch feat/fe-b-ui-merge from latest main.
+- Split large src/frontend/components/travel-mvp-app.tsx into feature components and moved selected UI pieces from v4.2 into the codebase as components: StampTourScreen, AiCourseScreen, TravelCartScreen.
+
+What I changed (key files):
+- src/frontend/components/travel-mvp-app.tsx (imports updated, large screen components moved out)
+- src/frontend/components/travel/StampTourScreen.tsx (new)
+- src/frontend/components/travel/AiCourseScreen.tsx (new)
+- src/frontend/components/travel/TravelCartScreen.tsx (new)
+
+What I preserved / intentionally did NOT change:
+- Did NOT overwrite package.json, package-lock.json, tsconfig.json, layout.tsx, globals.css.
+- DID NOT replace or mock existing auth, Supabase integration, backend APIs, or Route Handlers — existing backend and auth remain intact.
+- Existing src/app, src/backend, src/shared structure retained.
+
+Not implemented / TODO (future work):
+- Continue porting additional v4.2 UI components (other screens, shared design tokens) and consolidate duplicated helper components to avoid code duplication.
+- Move and categorize public assets (icons/images) into public/shared and public/features/* per agreed mapping. I created the travel component folder but did not add all images from the ZIP — will add selectively to avoid overwriting repo assets.
+- Make disabled/aria-disabled states for non-functional buttons across all newly added components — some buttons remain interactive for demo.
+- Review and remove any demo passwords in public docs or code: found no changes to auth logic, but a thorough security review is recommended for demo fallbacks.
+
+Build & tests performed:
+- npm ci: succeeded.
+- npm run build (next build): succeeded. TypeScript checked successfully and pages generated.
+
+Notes & risks:
+- The v4.2 ZIP was used only as a visual reference; no backend or auth from v4.2 was imported.
+- If conflicts arose, existing repository code was favored per instructions.
+
+Next steps I recommend:
+1. Review the created components and confirm which v4.2 UI parts to continue porting (stamps, courses, schedule, cart).
+2. Approve a plan for moving assets into public/ (I can add them as separate commits).
+3. Replace duplicated helper components (PhoneStatus, HeaderBar, Chip, etc.) with shared modules and import them.
+4. Add accessibility improvements (aria-disabled, labels) and mark non-functional actions as "준비 중" where appropriate.
+
+This is a DRAFT PR to capture progress; please review and advise on which parts of the v4.2 UI to prioritize next.
