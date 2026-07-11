@@ -17,13 +17,13 @@ export function ItineraryScreen({ places }: Props) {
         <p className="mt-1 text-[9px] font-bold text-[#99a1ad]">선택한 5곳을 순서대로 연결한 전체 경로예요.</p>
         <RouteMapCard places={places} />
 
-n        <div className="mt-4 grid grid-cols-3 gap-2">
+        <div className="mt-4 grid grid-cols-3 gap-2">
           {['Day 1', 'Day 2', 'Day 3'].map((day, index) => (
             <button key={day} className={`h-8 rounded-full text-[11px] font-black ${index === 0 ? 'bg-[#223c72] text-white' : 'bg-[#eff2f6] text-[#8f98a6]'}`} type="button">{day}</button>
           ))}
         </div>
 
-n        <div className="mt-4 space-y-3">
+        <div className="mt-4 space-y-3">
           {places.slice(0, 4).map((place, index) => (
             <TimelineItem key={place.id} place={place} index={index} />
           ))}

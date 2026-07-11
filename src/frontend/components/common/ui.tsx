@@ -1,7 +1,6 @@
 'use client';
 
 import React from 'react';
-import { MapPin } from 'lucide-react';
 
 export function PhoneStatus({ dark = false }: { dark?: boolean }) {
   return (
@@ -18,10 +17,10 @@ export function PhoneStatus({ dark = false }: { dark?: boolean }) {
 
 export function HeaderBar({ title, subtitle, left, right }: { title: string; subtitle?: string; left?: React.ReactNode; right?: React.ReactNode }) {
   return (
-    <header className="grid h-11 grid-cols-[42px_1fr_42px] items-center px-4">
+    <header className="grid min-h-11 grid-cols-[42px_minmax(0,1fr)_42px] items-center px-4">
       <div className="text-[#111827]">{left}</div>
-      <div className="text-center">
-        <h1 className="text-[14px] font-black">{title}</h1>
+      <div className="min-w-0 text-center">
+        <h1 className="truncate text-[14px] font-black">{title}</h1>
         {subtitle && <p className="mt-0.5 text-[9px] font-bold text-[#8f98a6]">{subtitle}</p>}
       </div>
       <div className="justify-self-end text-[#111827]">{right}</div>

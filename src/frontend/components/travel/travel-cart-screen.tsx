@@ -40,7 +40,7 @@ export function TravelCartScreen({ places, userEmail }: Props) {
           <span>선택 <b className="text-[#ff5b4f]">5곳</b></span>
           <span className="text-[#8f98a6]">{userEmail ? userEmail.split('@')[0] : '여행자'}님 코스</span>
         </div>
-        <button className="fixed bottom-[68px] left-1/2 z-30 h-12 w-[calc(100%-40px)] max-w-[390px] -translate-x-1/2 rounded-xl bg-[#ff5b4f] text-[13px] font-black text-white shadow-[0_12px_24px_rgba(255,91,79,.32)]" type="button">
+        <button className="fixed bottom-[calc(72px+env(safe-area-inset-bottom))] left-1/2 z-30 h-12 w-[calc(100%-40px)] max-w-[390px] -translate-x-1/2 rounded-xl bg-[#ff5b4f] text-[13px] font-black text-white shadow-[0_12px_24px_rgba(255,91,79,.32)]" type="button">
           선택한 장소 일정으로 보내기
         </button>
       </div>

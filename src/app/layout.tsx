@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import { ServiceWorkerRegister } from '@/frontend/components/service-worker-register';
+import { LocaleProvider } from '@/frontend/i18n/locale-context';
 
 export const metadata: Metadata = {
   title: 'AI와 함께하는 경주 역사 여행',
@@ -32,7 +33,7 @@ export default function RootLayout({
   return (
     <html lang="ko">
       <body>
-        {children}
+        <LocaleProvider>{children}</LocaleProvider>
         <ServiceWorkerRegister />
       </body>
     </html>
