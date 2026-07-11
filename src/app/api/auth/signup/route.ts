@@ -2,9 +2,23 @@ import { createSupabaseServerClient } from '@/backend/supabase/server';
 import { NextResponse } from 'next/server';
 
 export async function POST(request: Request) {
-  const { email, name, password } = await request.json() as { email: string; name?: string; password: string };
+  let body: { email?: unknown; name?: unknown; password?: unknown };
+
+  try {
+    body = await request.json() as { email?: unknown; name?: unknown; password?: unknown };
+  } catch {
+    return NextResponse.json({ error: '올바른 JSON 요청이 필요합니다.' }, { status: 400 });
+  }
+
+  const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
+  const name = typeof body.name === 'string' ? body.name : '';
+  const password = typeof body.password === 'string' ? body.password : '';
   const { origin } = new URL(request.url);
-  const trimmedName = name?.trim() ?? '';
+  const trimmedName = name.trim();
+
+  if (!/^\S+@\S+\.\S+$/.test(email) || password.length < 6) {
+    return NextResponse.json({ error: '올바른 이메일과 6자 이상의 비밀번호가 필요합니다.' }, { status: 400 });
+  }
 
   if (trimmedName.length < 2) {
     return NextResponse.json({ error: '이름은 2자 이상 입력해 주세요.' }, { status: 400 });

@@ -20,7 +20,7 @@ loadEnvLocal();
 
 const TOUR_API_KEY = process.env.TOUR_API_KEY;
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const SUPABASE_KEY = process.env.SUPABASE_SECRET_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+const SUPABASE_KEY = process.env.SUPABASE_SECRET_KEY;
 
 // contentTypeId → 카테고리 매핑
 const CATEGORY_MAP = {
@@ -87,7 +87,7 @@ async function main() {
   }
 
   if (!SUPABASE_URL || !SUPABASE_KEY) {
-    throw new Error('NEXT_PUBLIC_SUPABASE_URL과 SUPABASE_SECRET_KEY 또는 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY가 필요합니다.');
+    throw new Error('NEXT_PUBLIC_SUPABASE_URL과 서버 전용 SUPABASE_SECRET_KEY가 필요합니다.');
   }
 
   const contentTypes = ['12', '14', '15', '32', '39'];

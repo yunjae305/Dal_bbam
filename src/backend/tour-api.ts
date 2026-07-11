@@ -9,10 +9,33 @@ const DEFAULT_CONTENT_TYPE_ID = '12';
 const DEFAULT_RADIUS = '2000';
 const GYEONGJU_RADIUS = '30000';
 const DEFAULT_CACHE_TTL_SECONDS = 60 * 30;
-const TOUR_API_CACHE_TTL_SECONDS = Number(process.env.TOUR_API_CACHE_TTL_SECONDS ?? DEFAULT_CACHE_TTL_SECONDS);
-const TOUR_API_CACHE_TTL_MS = Number.isFinite(TOUR_API_CACHE_TTL_SECONDS)
-  ? TOUR_API_CACHE_TTL_SECONDS * 1000
-  : DEFAULT_CACHE_TTL_SECONDS * 1000;
+const DEFAULT_REQUEST_TIMEOUT_MS = 8000;
+const MAX_NUM_OF_ROWS = 100;
+const MAX_PAGE_NO = 1000;
+const MAX_RADIUS_M = 20000;
+const MAX_CACHE_ENTRIES = 500;
+const ALLOWED_CONTENT_TYPE_IDS = new Set(['12', '14', '15', '25', '28', '32', '38', '39']);
+
+function boundedEnvNumber(value: string | undefined, fallback: number, min: number, max: number): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.min(max, Math.max(min, parsed)) : fallback;
+}
+
+const TOUR_API_CACHE_TTL_SECONDS = boundedEnvNumber(
+  process.env.TOUR_API_CACHE_TTL_SECONDS,
+  DEFAULT_CACHE_TTL_SECONDS,
+  1,
+  86400
+);
+const TOUR_API_CACHE_TTL_MS = TOUR_API_CACHE_TTL_SECONDS * 1000;
+const TOUR_API_REQUEST_TIMEOUT_MS = boundedEnvNumber(
+  process.env.TOUR_API_REQUEST_TIMEOUT_MS,
+  DEFAULT_REQUEST_TIMEOUT_MS,
+  1000,
+  30000
+);
+
+export const TOUR_API_CACHE_CONTROL = `public, s-maxage=${Math.floor(TOUR_API_CACHE_TTL_SECONDS)}, stale-while-revalidate=86400`;
 
 type TourApiResult<T> = {
   items: T[];
@@ -33,6 +56,7 @@ type CacheEntry<T> = {
 };
 
 const tourApiCache = new Map<string, CacheEntry<unknown>>();
+const pendingRequests = new Map<string, Promise<TourApiResult<unknown>>>();
 
 type TourApiEnvelope<T> = {
   response?: {
@@ -71,6 +95,65 @@ export class TourApiError extends Error {
     this.name = 'TourApiError';
     this.status = status;
   }
+}
+
+function positiveInteger(value: string | undefined, fallback: number, max: number, field: string): string {
+  const parsed = value === undefined ? fallback : Number(value);
+
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > max) {
+    throw new TourApiError(`${field} must be an integer between 1 and ${max}.`, 400);
+  }
+
+  return String(parsed);
+}
+
+function contentTypeId(value: string | undefined, fallback = DEFAULT_CONTENT_TYPE_ID): string {
+  const resolved = value ?? fallback;
+
+  if (!ALLOWED_CONTENT_TYPE_IDS.has(resolved)) {
+    throw new TourApiError('Unsupported contentTypeId.', 400);
+  }
+
+  return resolved;
+}
+
+function numericId(value: string, field: string): string {
+  const trimmed = value.trim();
+
+  if (!/^\d{1,30}$/.test(trimmed)) {
+    throw new TourApiError(`${field} must contain only numbers.`, 400);
+  }
+
+  return trimmed;
+}
+
+function coordinate(value: string, field: 'mapX' | 'mapY'): string {
+  const parsed = Number(value);
+  const valid = Number.isFinite(parsed) && (field === 'mapX'
+    ? parsed >= -180 && parsed <= 180
+    : parsed >= -90 && parsed <= 90);
+
+  if (!valid) {
+    throw new TourApiError(`${field} is not a valid coordinate.`, 400);
+  }
+
+  return String(parsed);
+}
+
+function yyyymmdd(value: string | undefined, field: string): string | undefined {
+  if (value === undefined) return undefined;
+  if (!/^\d{8}$/.test(value)) {
+    throw new TourApiError(`${field} must use YYYYMMDD format.`, 400);
+  }
+
+  const year = Number(value.slice(0, 4));
+  const month = Number(value.slice(4, 6));
+  const day = Number(value.slice(6, 8));
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) {
+    throw new TourApiError(`${field} is not a valid date.`, 400);
+  }
+  return value;
 }
 
 function getTourApiKey(): string {
@@ -135,15 +218,49 @@ async function requestTourApi<T>(path: string, params: Record<string, string | n
     };
   }
 
-  const response = await fetch(buildTourApiUrl(path, params), {
-    headers: {
-      Accept: 'application/json'
-    },
-    cache: 'force-cache',
-    next: {
-      revalidate: Math.max(1, Math.floor(TOUR_API_CACHE_TTL_MS / 1000))
+  if (cached) {
+    tourApiCache.delete(cacheKey);
+  }
+
+  const pending = pendingRequests.get(cacheKey) as Promise<TourApiResult<T>> | undefined;
+  if (pending) {
+    return pending;
+  }
+
+  const request = fetchAndCacheTourApi<T>(path, params, cacheKey);
+  pendingRequests.set(cacheKey, request as Promise<TourApiResult<unknown>>);
+
+  try {
+    return await request;
+  } finally {
+    pendingRequests.delete(cacheKey);
+  }
+}
+
+async function fetchAndCacheTourApi<T>(
+  path: string,
+  params: Record<string, string | number | undefined>,
+  cacheKey: string
+): Promise<TourApiResult<T>> {
+  let response: Response;
+
+  try {
+    response = await fetch(buildTourApiUrl(path, params), {
+      headers: {
+        Accept: 'application/json'
+      },
+      cache: 'force-cache',
+      next: {
+        revalidate: TOUR_API_CACHE_TTL_SECONDS
+      },
+      signal: AbortSignal.timeout(TOUR_API_REQUEST_TIMEOUT_MS)
+    });
+  } catch (error) {
+    if (error instanceof Error && (error.name === 'AbortError' || error.name === 'TimeoutError')) {
+      throw new TourApiError('TourAPI request timed out.', 504);
     }
-  });
+    throw new TourApiError('TourAPI request failed.');
+  }
 
   if (!response.ok) {
     throw new TourApiError(`TourAPI request failed with status ${response.status}.`, response.status);
@@ -171,6 +288,21 @@ async function requestTourApi<T>(path: string, params: Record<string, string | n
     numOfRows: body?.numOfRows ?? Number(params.numOfRows ?? 20),
     totalCount: body?.totalCount ?? 0
   };
+
+  if (tourApiCache.size >= MAX_CACHE_ENTRIES) {
+    const now = Date.now();
+    for (const [key, entry] of tourApiCache) {
+      if (entry.expiresAt <= now) {
+        tourApiCache.delete(key);
+      }
+    }
+
+    while (tourApiCache.size >= MAX_CACHE_ENTRIES) {
+      const oldestKey = tourApiCache.keys().next().value as string | undefined;
+      if (!oldestKey) break;
+      tourApiCache.delete(oldestKey);
+    }
+  }
 
   tourApiCache.set(cacheKey, {
     expiresAt: Date.now() + TOUR_API_CACHE_TTL_MS,
@@ -203,9 +335,9 @@ export function getTourAreaCodes(params: {
   numOfRows?: string;
 }) {
   return requestTourApi<TourAreaCode>('areaCode2', {
-    areaCode: params.areaCode,
-    pageNo: params.pageNo ?? '1',
-    numOfRows: params.numOfRows ?? '100'
+    areaCode: params.areaCode === undefined ? undefined : numericId(params.areaCode, 'areaCode'),
+    pageNo: positiveInteger(params.pageNo, 1, MAX_PAGE_NO, 'pageNo'),
+    numOfRows: positiveInteger(params.numOfRows, 100, MAX_NUM_OF_ROWS, 'numOfRows')
   });
 }
 
@@ -218,16 +350,16 @@ export function getGyeongjuTourPlaces(params: {
     mapX: GYEONGJU_MAP_X,
     mapY: GYEONGJU_MAP_Y,
     radius: GYEONGJU_RADIUS,
-    contentTypeId: params.contentTypeId ?? DEFAULT_CONTENT_TYPE_ID,
+    contentTypeId: contentTypeId(params.contentTypeId),
     arrange: 'E',
-    pageNo: params.pageNo ?? '1',
-    numOfRows: params.numOfRows ?? '20'
+    pageNo: positiveInteger(params.pageNo, 1, MAX_PAGE_NO, 'pageNo'),
+    numOfRows: positiveInteger(params.numOfRows, 20, MAX_NUM_OF_ROWS, 'numOfRows')
   });
 }
 
 export function getTourPlaceDetail(contentId: string) {
   return requestTourApi<TourPlaceDetail>('detailCommon2', {
-    contentId,
+    contentId: numericId(contentId, 'contentId'),
     defaultYN: 'Y',
     firstImageYN: 'Y',
     areacodeYN: 'Y',
@@ -246,11 +378,11 @@ export function getTourPlaceImages(params: {
   numOfRows?: string;
 }) {
   return requestTourApi<TourImage>('detailImage2', {
-    contentId: params.contentId,
+    contentId: numericId(params.contentId, 'contentId'),
     imageYN: 'Y',
     subImageYN: 'Y',
-    pageNo: params.pageNo ?? '1',
-    numOfRows: params.numOfRows ?? '20'
+    pageNo: positiveInteger(params.pageNo, 1, MAX_PAGE_NO, 'pageNo'),
+    numOfRows: positiveInteger(params.numOfRows, 20, MAX_NUM_OF_ROWS, 'numOfRows')
   });
 }
 
@@ -263,13 +395,13 @@ export function getNearbyTourPlaces(params: {
   contentTypeId?: string;
 }) {
   return requestTourApi<TourPlaceSummary>('locationBasedList2', {
-    mapX: params.mapX,
-    mapY: params.mapY,
-    radius: params.radius ?? DEFAULT_RADIUS,
-    contentTypeId: params.contentTypeId ?? DEFAULT_CONTENT_TYPE_ID,
+    mapX: coordinate(params.mapX, 'mapX'),
+    mapY: coordinate(params.mapY, 'mapY'),
+    radius: positiveInteger(params.radius, Number(DEFAULT_RADIUS), MAX_RADIUS_M, 'radius'),
+    contentTypeId: contentTypeId(params.contentTypeId),
     arrange: 'E',
-    pageNo: params.pageNo ?? '1',
-    numOfRows: params.numOfRows ?? '20'
+    pageNo: positiveInteger(params.pageNo, 1, MAX_PAGE_NO, 'pageNo'),
+    numOfRows: positiveInteger(params.numOfRows, 20, MAX_NUM_OF_ROWS, 'numOfRows')
   });
 }
 
@@ -279,14 +411,19 @@ export function searchGyeongjuTourPlaces(params: {
   numOfRows?: string;
   contentTypeId?: string;
 }) {
+  const keyword = params.keyword.trim();
+  if (!keyword || keyword.length > 60) {
+    throw new TourApiError('keyword must be between 1 and 60 characters.', 400);
+  }
+
   return requestTourApi<TourPlaceSummary>('searchKeyword2', {
-    keyword: params.keyword,
+    keyword,
     areaCode: GYEONGJU_AREA_CODE,
     sigunguCode: GYEONGJU_SIGUNGU_CODE,
-    contentTypeId: params.contentTypeId ?? DEFAULT_CONTENT_TYPE_ID,
+    contentTypeId: contentTypeId(params.contentTypeId),
     arrange: 'Q',
-    pageNo: params.pageNo ?? '1',
-    numOfRows: params.numOfRows ?? '20'
+    pageNo: positiveInteger(params.pageNo, 1, MAX_PAGE_NO, 'pageNo'),
+    numOfRows: positiveInteger(params.numOfRows, 20, MAX_NUM_OF_ROWS, 'numOfRows')
   });
 }
 
@@ -296,13 +433,19 @@ export function searchGyeongjuFestivals(params: {
   pageNo?: string;
   numOfRows?: string;
 }) {
+  const eventStartDate = yyyymmdd(params.eventStartDate, 'eventStartDate') ?? getTodayYyyymmdd();
+  const eventEndDate = yyyymmdd(params.eventEndDate, 'eventEndDate');
+  if (eventEndDate && eventEndDate < eventStartDate) {
+    throw new TourApiError('eventEndDate cannot be earlier than eventStartDate.', 400);
+  }
+
   return requestTourApi<TourPlaceSummary>('searchFestival2', {
-    eventStartDate: params.eventStartDate ?? getTodayYyyymmdd(),
-    eventEndDate: params.eventEndDate,
+    eventStartDate,
+    eventEndDate,
     areaCode: GYEONGJU_AREA_CODE,
     sigunguCode: GYEONGJU_SIGUNGU_CODE,
     arrange: 'Q',
-    pageNo: params.pageNo ?? '1',
-    numOfRows: params.numOfRows ?? '20'
+    pageNo: positiveInteger(params.pageNo, 1, MAX_PAGE_NO, 'pageNo'),
+    numOfRows: positiveInteger(params.numOfRows, 20, MAX_NUM_OF_ROWS, 'numOfRows')
   });
 }

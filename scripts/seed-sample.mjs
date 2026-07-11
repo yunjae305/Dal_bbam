@@ -19,7 +19,7 @@ function loadEnvLocal() {
 loadEnvLocal();
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const SUPABASE_KEY = process.env.SUPABASE_SECRET_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+const SUPABASE_KEY = process.env.SUPABASE_SECRET_KEY;
 
 const samplePlaces = [
   {
@@ -83,7 +83,7 @@ async function main() {
   console.log('=== 샘플 데이터 Supabase 삽입 시작 ===\n');
 
   if (!SUPABASE_URL || !SUPABASE_KEY) {
-    throw new Error('NEXT_PUBLIC_SUPABASE_URL과 SUPABASE_SECRET_KEY 또는 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY가 필요합니다.');
+    throw new Error('NEXT_PUBLIC_SUPABASE_URL과 서버 전용 SUPABASE_SECRET_KEY가 필요합니다.');
   }
 
   const res = await fetch(`${SUPABASE_URL}/rest/v1/places`, {

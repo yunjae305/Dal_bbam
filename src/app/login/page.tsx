@@ -5,8 +5,8 @@ import { Eye, EyeOff, Lock, Loader2, Mail, MessageCircle, UserRound } from 'luci
 
 type Mode = 'login' | 'signup';
 
-const demoEmail = process.env.NEXT_PUBLIC_DEMO_EMAIL ?? 'demo@gyeongju.com';
-const demoPassword = process.env.NEXT_PUBLIC_DEMO_PASSWORD ?? 'gyeongju2024';
+const demoEmail = 'demo@gyeongju.com';
+const demoPassword = 'gyeongju2024';
 
 export default function LoginPage() {
   const [mode, setMode] = useState<Mode>('login');

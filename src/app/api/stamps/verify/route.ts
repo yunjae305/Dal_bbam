@@ -3,6 +3,7 @@ import { getCurrentUser } from '@/backend/auth/current-user';
 import { distanceMeters, isValidCoordinate } from '@/backend/geo';
 import { getTourMvpData } from '@/backend/tour-mvp-data';
 import { createSupabaseServerClient } from '@/backend/supabase/server';
+import { createSupabaseAdminClient } from '@/backend/supabase/admin';
 
 const DEFAULT_STAMP_RADIUS_M = 150;
 const STAMP_RADIUS_M = Number(process.env.STAMP_RADIUS_M ?? DEFAULT_STAMP_RADIUS_M);
@@ -11,6 +12,7 @@ type VerifyBody = {
   placeId?: string;
   lat?: number;
   lng?: number;
+  accuracyMeters?: number;
 };
 
 function validUuid(value: string): boolean {
@@ -18,7 +20,7 @@ function validUuid(value: string): boolean {
 }
 
 async function findSupabasePlace(placeId: string) {
-  const supabase = await createSupabaseServerClient();
+  const supabase = createSupabaseAdminClient() ?? await createSupabaseServerClient();
 
   if (!supabase) {
     return null;
@@ -53,10 +55,18 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: '로그인이 필요합니다.' }, { status: 401 });
   }
 
-  const body = await request.json() as VerifyBody;
-  const placeId = body.placeId?.trim();
-  const lat = Number(body.lat);
-  const lng = Number(body.lng);
+  let body: VerifyBody;
+
+  try {
+    body = await request.json() as VerifyBody;
+  } catch {
+    return NextResponse.json({ error: '올바른 JSON 요청이 필요합니다.' }, { status: 400 });
+  }
+
+  const placeId = typeof body.placeId === 'string' ? body.placeId.trim() : '';
+  const lat = typeof body.lat === 'number' ? body.lat : Number.NaN;
+  const lng = typeof body.lng === 'number' ? body.lng : Number.NaN;
+  const accuracyMeters = body.accuracyMeters;
 
   if (!placeId) {
     return NextResponse.json({ error: 'placeId가 필요합니다.' }, { status: 400 });
@@ -64,6 +74,13 @@ export async function POST(request: NextRequest) {
 
   if (!isValidCoordinate(lat, lng)) {
     return NextResponse.json({ error: '유효한 GPS 좌표가 필요합니다.' }, { status: 400 });
+  }
+
+  if (
+    accuracyMeters !== undefined &&
+    (!Number.isFinite(accuracyMeters) || accuracyMeters < 0 || accuracyMeters > 100)
+  ) {
+    return NextResponse.json({ error: 'GPS 정확도가 100m 이내일 때 다시 시도해 주세요.' }, { status: 422 });
   }
 
   const supabasePlace = await findSupabasePlace(placeId);
@@ -81,26 +98,32 @@ export async function POST(request: NextRequest) {
   const radius = Number.isFinite(STAMP_RADIUS_M) ? STAMP_RADIUS_M : DEFAULT_STAMP_RADIUS_M;
   const verified = distance <= radius;
   let persisted = false;
+  let alreadyAcquired = false;
 
-  if (verified && user.supabaseUserId && supabasePlace) {
-    const supabase = await createSupabaseServerClient();
+  if (verified && supabasePlace) {
+    const supabase = user.supabaseUserId
+      ? await createSupabaseServerClient()
+      : createSupabaseAdminClient();
     const { error } = supabase
       ? await supabase.from('stamps').insert({
-          user_id: user.supabaseUserId,
+          actor_key: user.actorKey,
+          user_id: user.supabaseUserId ?? null,
           place_id: supabasePlace.id,
           lat,
           lng
         })
       : { error: null };
-
-    persisted = !error;
+    alreadyAcquired = error?.code === '23505';
+    persisted = !error || alreadyAcquired;
   }
 
   return NextResponse.json({
     verified,
     persisted,
+    alreadyAcquired,
     distanceMeters: distance,
     radiusMeters: radius,
+    accuracyMeters: accuracyMeters ?? null,
     place: {
       id: supabasePlace?.content_id || supabasePlace?.id || appPlace?.id,
       name: supabasePlace?.name || appPlace?.name
