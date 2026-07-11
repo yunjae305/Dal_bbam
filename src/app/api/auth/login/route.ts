@@ -16,12 +16,17 @@ export async function POST(request: Request) {
 
   const email = credentials.email?.trim() ?? '';
   const password = credentials.password ?? '';
+  const isDemoLogin = email.toLowerCase() === DEMO_EMAIL.toLowerCase() && password === DEMO_PASSWORD;
 
   if (!email || !password) {
     return NextResponse.json({ error: '이메일과 비밀번호를 입력해 주세요.' }, { status: 400 });
   }
 
   // Supabase가 설정된 환경에서는 Supabase 인증을 사용합니다.
+  if (isDemoLogin) {
+    return createLoginResponse(DEMO_EMAIL);
+  }
+
   const supabase = await createSupabaseServerClient();
   if (supabase) {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
@@ -36,7 +41,7 @@ export async function POST(request: Request) {
   }
 
   // Supabase 미설정 환경에서는 데모 계정으로 로그인합니다.
-  if (email !== DEMO_EMAIL || password !== DEMO_PASSWORD) {
+  if (!isDemoLogin) {
     return NextResponse.json({ error: '이메일 또는 비밀번호가 올바르지 않습니다.' }, { status: 401 });
   }
 

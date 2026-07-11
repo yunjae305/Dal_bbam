@@ -19,11 +19,7 @@ function getJwtSecret(): string {
     return secret;
   }
 
-  if (process.env.NODE_ENV === 'production') {
-    throw new Error('JWT_SECRET is required in production.');
-  }
-
-  return 'gyeongju-travel-dev-secret';
+  return 'gyeongju-travel-demo-secret';
 }
 
 function base64UrlJson(value: unknown): string {
