@@ -1,8 +1,25 @@
 // 샘플 데이터를 Supabase places 테이블에 넣는 스크립트
 // 실행: node scripts/seed-sample.mjs
 
-const SUPABASE_URL = 'https://shhkzgnojismtswvkujf.supabase.co';
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNoaGt6Z25vamlzbXRzd3ZrdWpmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI4OTI3NTcsImV4cCI6MjA5ODQ2ODc1N30.xrrQbe3pA2XPQHTClBo6c6bvAa-oVtHYxVoSzIiA_Eo';
+import { existsSync, readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
+function loadEnvLocal() {
+  const envPath = resolve(process.cwd(), '.env.local');
+  if (!existsSync(envPath)) return;
+
+  for (const line of readFileSync(envPath, 'utf8').split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#') || !trimmed.includes('=')) continue;
+    const [key, ...valueParts] = trimmed.split('=');
+    process.env[key] ??= valueParts.join('=');
+  }
+}
+
+loadEnvLocal();
+
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const SUPABASE_KEY = process.env.SUPABASE_SECRET_KEY;
 
 const samplePlaces = [
   {
@@ -64,6 +81,10 @@ const samplePlaces = [
 
 async function main() {
   console.log('=== 샘플 데이터 Supabase 삽입 시작 ===\n');
+
+  if (!SUPABASE_URL || !SUPABASE_KEY) {
+    throw new Error('NEXT_PUBLIC_SUPABASE_URL과 서버 전용 SUPABASE_SECRET_KEY가 필요합니다.');
+  }
 
   const res = await fetch(`${SUPABASE_URL}/rest/v1/places`, {
     method: 'POST',

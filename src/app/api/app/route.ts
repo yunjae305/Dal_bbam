@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getMvpData } from '@/backend/data';
+import { getTourMvpData } from '@/backend/tour-mvp-data';
 import type { Lang } from '@/shared/types';
 
 function getLang(request: NextRequest): Lang {
@@ -12,6 +12,6 @@ function getLang(request: NextRequest): Lang {
   return 'ko';
 }
 
-export function GET(request: NextRequest) {
-  return NextResponse.json(getMvpData(getLang(request)));
+export async function GET(request: NextRequest) {
+  return NextResponse.json(await getTourMvpData(getLang(request)));
 }

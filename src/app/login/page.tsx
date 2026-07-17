@@ -1,15 +1,14 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
 import { Eye, EyeOff, Lock, Loader2, Mail, MessageCircle, UserRound } from 'lucide-react';
 
 type Mode = 'login' | 'signup';
 
-const isSupabaseConfigured = Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL);
+const demoEmail = 'demo@gyeongju.com';
+const demoPassword = 'gyeongju2024';
 
 export default function LoginPage() {
-  const router = useRouter();
   const [mode, setMode] = useState<Mode>('login');
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
@@ -23,6 +22,19 @@ export default function LoginPage() {
 
   const isSignup = mode === 'signup';
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const loginError = params.get('error');
+
+    if (loginError === 'kakao_not_configured') {
+      setError('카카오 로그인을 사용하려면 KAKAO_CLIENT_ID를 설정해 주세요.');
+    } else if (loginError === 'kakao_state') {
+      setError('카카오 로그인 요청이 만료되었습니다. 다시 시도해 주세요.');
+    } else if (loginError === 'kakao_login') {
+      setError('카카오 로그인 중 오류가 발생했습니다.');
+    }
+  }, []);
+
   function switchMode(next: Mode) {
     setMode(next);
     setError('');
@@ -30,9 +42,10 @@ export default function LoginPage() {
   }
 
   function fillDemo() {
-    setEmail('demo@gyeongju.com');
+    setMode('login');
+    setEmail(demoEmail);
     setName('');
-    setPassword('gyeongju2024');
+    setPassword(demoPassword);
     setPasswordConfirm('');
     setError('');
     setMessage('');
@@ -41,6 +54,10 @@ export default function LoginPage() {
   function showSocialNotice(provider: string) {
     setError('');
     setMessage(`${provider} 로그인은 준비 중입니다.`);
+  }
+
+  function startKakaoLogin() {
+    window.location.href = '/api/auth/kakao';
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -65,6 +82,7 @@ export default function LoginPage() {
       const endpoint = isSignup ? '/api/auth/signup' : '/api/auth/login';
       const res = await fetch(endpoint, {
         method: 'POST',
+        credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, name: name.trim(), password })
       });
@@ -75,8 +93,7 @@ export default function LoginPage() {
       } else if (isSignup) {
         setMessage('인증 메일을 보냈습니다. 메일의 링크를 눌러 인증하면 회원가입이 완료됩니다.');
       } else {
-        router.push('/');
-        router.refresh();
+        window.location.replace('/');
       }
     } finally {
       setLoading(false);
@@ -248,7 +265,7 @@ export default function LoginPage() {
               </button>
             </div>
 
-            {!isSupabaseConfigured && !isSignup && (
+            {!isSignup && (
               <button
                 type="button"
                 onClick={fillDemo}
@@ -262,7 +279,7 @@ export default function LoginPage() {
               <div className="mt-6 grid gap-3 px-3">
                 <button
                   type="button"
-                  onClick={() => showSocialNotice('카카오')}
+                  onClick={startKakaoLogin}
                   className="flex h-11 items-center justify-center gap-3 rounded-sm bg-[#fee500] text-[13px] font-black text-[#191919] shadow-[0_8px_20px_rgba(0,0,0,0.25)]"
                 >
                   <MessageCircle size={19} fill="#191919" strokeWidth={0} />

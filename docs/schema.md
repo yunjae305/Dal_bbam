@@ -124,8 +124,11 @@ TourAPI 데이터를 저장하는 핵심 테이블. AI 해설도 여기에 캐�
 | 컬럼 | 타입 | 설명 |
 |---|---|---|
 | id | UUID | 기본키 |
-| user_id | UUID | 사용자 ID |
+| user_id | UUID | Supabase Auth 사용자 ID (JWT/카카오 사용자는 null) |
+| actor_key | TEXT | 인증 방식과 사용자 ID를 합친 내부 식별자 (예: supabase:UUID, kakao:UUID) |
 | place_id | UUID | places.id 참조 |
 | acquired_at | TIMESTAMPTZ | 스탬프 획득 일시 |
 | lat | FLOAT | 획득 당시 위도 (GPS 검증용) |
 | lng | FLOAT | 획득 당시 경도 (GPS 검증용) |
+
+`actor_key + place_id`에는 유니크 인덱스를 적용해 같은 사용자의 중복 스탬프 발급을 방지합니다. JWT/카카오 사용자는 서버 전용 Supabase 키를 통해서만 접근하고, Supabase Auth 사용자는 RLS에서 `auth.uid()`가 일치할 때만 조회·발급할 수 있습니다.

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getLocalizedPlaces } from '@/backend/data';
+import { getTourMvpData } from '@/backend/tour-mvp-data';
 import type { Category, Lang } from '@/shared/types';
 
 function getLang(request: NextRequest): Lang {
@@ -22,10 +22,11 @@ function getCategory(request: NextRequest): Category {
   return '전체';
 }
 
-export function GET(request: NextRequest) {
+export async function GET(request: NextRequest) {
   const q = (request.nextUrl.searchParams.get('q') ?? '').trim().toLowerCase();
   const category = getCategory(request);
-  const places = getLocalizedPlaces(getLang(request))
+  const data = await getTourMvpData(getLang(request));
+  const places = data.places
     .filter(place => category === '전체' || place.category === category)
     .filter(place => {
       if (!q) {

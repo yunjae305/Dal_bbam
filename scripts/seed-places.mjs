@@ -1,9 +1,26 @@
 // TourAPI에서 경주 관광지 데이터를 가져와서 Supabase places 테이블에 넣는 스크립트
 // 실행: node scripts/seed-places.mjs
 
-const TOUR_API_KEY = 'e98813c46bb8f3954ced511390b36beb45f92d095611f0090323fac88414ee33';
-const SUPABASE_URL = 'https://shhkzgnojismtswvkujf.supabase.co';
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNoaGt6Z25vamlzbXRzd3ZrdWpmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI4OTI3NTcsImV4cCI6MjA5ODQ2ODc1N30.xrrQbe3pA2XPQHTClBo6c6bvAa-oVtHYxVoSzIiA_Eo';
+import { existsSync, readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
+function loadEnvLocal() {
+  const envPath = resolve(process.cwd(), '.env.local');
+  if (!existsSync(envPath)) return;
+
+  for (const line of readFileSync(envPath, 'utf8').split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#') || !trimmed.includes('=')) continue;
+    const [key, ...valueParts] = trimmed.split('=');
+    process.env[key] ??= valueParts.join('=');
+  }
+}
+
+loadEnvLocal();
+
+const TOUR_API_KEY = process.env.TOUR_API_KEY;
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const SUPABASE_KEY = process.env.SUPABASE_SECRET_KEY;
 
 // contentTypeId → 카테고리 매핑
 const CATEGORY_MAP = {
@@ -18,18 +35,19 @@ const CATEGORY_MAP = {
 async function fetchPlacesFromTourAPI(contentTypeId, numOfRows = 30) {
   // serviceKey는 URLSearchParams 없이 직접 붙여야 이중인코딩 방지됨
   const params = new URLSearchParams({
-    areaCode: '35',
-    sigunguCode: '2',
+    mapX: '129.2247',
+    mapY: '35.8562',
+    radius: '30000',
     contentTypeId,
     numOfRows: String(numOfRows),
     pageNo: '1',
     MobileOS: 'ETC',
     MobileApp: 'DalBbam',
     _type: 'json',
-    arrange: 'Q',
+    arrange: 'E',
   });
 
-  const url = `https://apis.data.go.kr/B551011/KorService2/areaBasedList2?serviceKey=${TOUR_API_KEY}&${params}`;
+  const url = `https://apis.data.go.kr/B551011/KorService2/locationBasedList2?serviceKey=${TOUR_API_KEY}&${params}`;
   console.log(`  TourAPI 호출 중... (contentTypeId: ${contentTypeId})`);
 
   const res = await fetch(url);
@@ -63,6 +81,14 @@ async function insertToSupabase(places) {
 
 async function main() {
   console.log('=== 경주 관광지 seed 데이터 구축 시작 ===\n');
+
+  if (!TOUR_API_KEY) {
+    throw new Error('TOUR_API_KEY가 필요합니다.');
+  }
+
+  if (!SUPABASE_URL || !SUPABASE_KEY) {
+    throw new Error('NEXT_PUBLIC_SUPABASE_URL과 서버 전용 SUPABASE_SECRET_KEY가 필요합니다.');
+  }
 
   const contentTypes = ['12', '14', '15', '32', '39'];
   let totalInserted = 0;

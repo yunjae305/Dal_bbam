@@ -6,6 +6,7 @@ export function GET() {
 
   return NextResponse.json({
     configured: env.configured,
-    mode: env.configured ? 'supabase-ready' : 'seed-data'
+    authConfigured: env.authConfigured,
+    mode: env.configured ? 'supabase-ready' : 'fallback-data'
   });
 }

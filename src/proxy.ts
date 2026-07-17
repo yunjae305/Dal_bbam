@@ -6,6 +6,15 @@ export async function proxy(request: NextRequest) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
   const isLoginPage = request.nextUrl.pathname === '/login';
+  const token = request.cookies.get(SESSION_COOKIE)?.value;
+  const session = token ? verifySessionToken(token) : null;
+
+  if (session && isLoginPage) {
+    return NextResponse.redirect(new URL('/', request.url));
+  }
+  if (session) {
+    return NextResponse.next();
+  }
 
   // Supabase가 설정된 환경에서는 Supabase 세션을 사용합니다.
   if (supabaseUrl && supabaseKey) {
@@ -37,14 +46,8 @@ export async function proxy(request: NextRequest) {
   }
 
   // Supabase 미설정 환경에서는 자체 세션 쿠키 인증을 사용합니다.
-  const token = request.cookies.get(SESSION_COOKIE)?.value;
-  const session = token ? verifySessionToken(token) : null;
-
-  if (!session && !isLoginPage) {
+  if (!isLoginPage) {
     return NextResponse.redirect(new URL('/login', request.url));
-  }
-  if (session && isLoginPage) {
-    return NextResponse.redirect(new URL('/', request.url));
   }
   return NextResponse.next();
 }
