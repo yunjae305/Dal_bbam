@@ -1,18 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createSupabaseServerClient } from '@/backend/supabase/server';
 
-// GET /api/schedules?user_id=xxx
-export async function GET(request: NextRequest) {
+// GET /api/schedules
+export async function GET() {
   const supabase = await createSupabaseServerClient();
   if (!supabase) return NextResponse.json({ error: 'DB 연결 실패' }, { status: 500 });
 
-  const userId = request.nextUrl.searchParams.get('user_id');
-  if (!userId) return NextResponse.json({ error: 'user_id 필요' }, { status: 400 });
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError || !user) return NextResponse.json({ error: '로그인이 필요합니다.' }, { status: 401 });
 
   const { data, error } = await supabase
     .from('schedules')
     .select('*, schedule_places(*, places(*))')
-    .eq('user_id', userId)
+    .eq('user_id', user.id)
     .order('created_at', { ascending: false });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -24,14 +24,17 @@ export async function POST(request: NextRequest) {
   const supabase = await createSupabaseServerClient();
   if (!supabase) return NextResponse.json({ error: 'DB 연결 실패' }, { status: 500 });
 
-  const body = await request.json();
-  const { user_id, title, start_date, end_date } = body;
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError || !user) return NextResponse.json({ error: '로그인이 필요합니다.' }, { status: 401 });
 
-  if (!user_id || !title) return NextResponse.json({ error: 'user_id, title 필요' }, { status: 400 });
+  const body = await request.json();
+  const { title, start_date, end_date } = body;
+
+  if (!title) return NextResponse.json({ error: 'title 필요' }, { status: 400 });
 
   const { data, error } = await supabase
     .from('schedules')
-    .insert({ user_id, title, start_date, end_date })
+    .insert({ user_id: user.id, title, start_date, end_date })
     .select()
     .single();
 

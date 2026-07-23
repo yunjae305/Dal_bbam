@@ -26,15 +26,18 @@ export async function POST(request: NextRequest) {
   const supabase = await createSupabaseServerClient();
   if (!supabase) return NextResponse.json({ error: 'DB 연결 실패' }, { status: 500 });
 
-  const body = await request.json();
-  const { user_id, place_id, content, rating, images } = body;
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError || !user) return NextResponse.json({ error: '로그인이 필요합니다.' }, { status: 401 });
 
-  if (!user_id || !content) return NextResponse.json({ error: 'user_id, content 필요' }, { status: 400 });
+  const body = await request.json();
+  const { place_id, content, rating, images } = body;
+
+  if (!content) return NextResponse.json({ error: 'content 필요' }, { status: 400 });
   if (rating && (rating < 1 || rating > 5)) return NextResponse.json({ error: '별점은 1~5 사이' }, { status: 400 });
 
   const { data, error } = await supabase
     .from('reviews')
-    .insert({ user_id, place_id, content, rating, images: images ?? [] })
+    .insert({ user_id: user.id, place_id, content, rating, images: images ?? [] })
     .select()
     .single();
 
@@ -47,10 +50,13 @@ export async function DELETE(request: NextRequest) {
   const supabase = await createSupabaseServerClient();
   if (!supabase) return NextResponse.json({ error: 'DB 연결 실패' }, { status: 500 });
 
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError || !user) return NextResponse.json({ error: '로그인이 필요합니다.' }, { status: 401 });
+
   const id = request.nextUrl.searchParams.get('id');
   if (!id) return NextResponse.json({ error: 'id 필요' }, { status: 400 });
 
-  const { error } = await supabase.from('reviews').delete().eq('id', id);
+  const { error } = await supabase.from('reviews').delete().eq('id', id).eq('user_id', user.id);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return new NextResponse(null, { status: 204 });
