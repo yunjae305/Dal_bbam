@@ -1,12 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Eye, EyeOff, Lock, Loader2, Mail, MessageCircle, UserRound } from 'lucide-react';
+import { Eye, EyeOff, Lock, Loader2, Mail, UserRound } from 'lucide-react';
 
 type Mode = 'login' | 'signup';
-
-const demoEmail = 'demo@gyeongju.com';
-const demoPassword = 'gyeongju2024';
 
 export default function LoginPage() {
   const [mode, setMode] = useState<Mode>('login');
@@ -26,27 +23,27 @@ export default function LoginPage() {
     const params = new URLSearchParams(window.location.search);
     const loginError = params.get('error');
 
-    if (loginError === 'kakao_not_configured') {
-      setError('카카오 로그인을 사용하려면 KAKAO_CLIENT_ID를 설정해 주세요.');
-    } else if (loginError === 'kakao_state') {
-      setError('카카오 로그인 요청이 만료되었습니다. 다시 시도해 주세요.');
-    } else if (loginError === 'kakao_login') {
-      setError('카카오 로그인 중 오류가 발생했습니다.');
+    const kakaoErrors: Record<string, string> = {
+      kakao_not_configured: '카카오 로그인 서버 설정을 확인해 주세요.',
+      kakao_cancelled: '카카오 로그인이 취소되었습니다.',
+      kakao_authorization_failed: '카카오 인증 요청을 완료하지 못했습니다.',
+      kakao_code_missing: '카카오 인가 코드가 전달되지 않았습니다. 다시 시도해 주세요.',
+      kakao_state_mismatch: '로그인 요청이 만료되었거나 올바르지 않습니다. 다시 시도해 주세요.',
+      kakao_token_failed: '카카오 인증 토큰을 발급받지 못했습니다. 다시 시도해 주세요.',
+      kakao_user_failed: '카카오 사용자 정보를 불러오지 못했습니다.',
+      kakao_user_persistence_failed: '서비스 회원 정보를 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.',
+      // 이전 URL과 세션에서 돌아오는 사용자를 위한 호환 메시지입니다.
+      kakao_state: '로그인 요청이 만료되었습니다. 다시 시도해 주세요.',
+      kakao_login: '카카오 로그인 중 오류가 발생했습니다.'
+    };
+
+    if (loginError && kakaoErrors[loginError]) {
+      setError(kakaoErrors[loginError]);
     }
   }, []);
 
   function switchMode(next: Mode) {
     setMode(next);
-    setError('');
-    setMessage('');
-  }
-
-  function fillDemo() {
-    setMode('login');
-    setEmail(demoEmail);
-    setName('');
-    setPassword(demoPassword);
-    setPasswordConfirm('');
     setError('');
     setMessage('');
   }
@@ -57,7 +54,7 @@ export default function LoginPage() {
   }
 
   function startKakaoLogin() {
-    window.location.href = '/api/auth/kakao';
+    window.location.assign('/api/auth/kakao/login');
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -82,7 +79,7 @@ export default function LoginPage() {
       const endpoint = isSignup ? '/api/auth/signup' : '/api/auth/login';
       const res = await fetch(endpoint, {
         method: 'POST',
-        credentials: 'same-origin',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, name: name.trim(), password })
       });
@@ -266,24 +263,18 @@ export default function LoginPage() {
             </div>
 
             {!isSignup && (
-              <button
-                type="button"
-                onClick={fillDemo}
-                className="mx-auto mt-3 block rounded-full bg-black/30 px-4 py-2 text-[11px] font-bold text-white/85 backdrop-blur-sm"
-              >
-                데모 계정으로 채우기
-              </button>
-            )}
-
-            {!isSignup && (
               <div className="mt-6 grid gap-3 px-3">
                 <button
                   type="button"
                   onClick={startKakaoLogin}
-                  className="flex h-11 items-center justify-center gap-3 rounded-sm bg-[#fee500] text-[13px] font-black text-[#191919] shadow-[0_8px_20px_rgba(0,0,0,0.25)]"
+                  className="h-[45px] overflow-hidden rounded-xl shadow-[0_8px_20px_rgba(0,0,0,0.25)] transition active:scale-[0.99]"
+                  aria-label="카카오 로그인"
                 >
-                  <MessageCircle size={19} fill="#191919" strokeWidth={0} />
-                  카카오 로그인
+                  <img
+                    src="https://developers.kakao.com/tool/resource/static/img/button/login/full/ko/kakao_login_medium_wide.png"
+                    alt="카카오 로그인"
+                    className="h-full w-full object-fill"
+                  />
                 </button>
                 <button
                   type="button"

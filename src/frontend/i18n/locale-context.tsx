@@ -1,42 +1,54 @@
 'use client';
 
-import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { createContext, startTransition, useContext, useEffect, useMemo, useState } from 'react';
+import { isLang, localeCookieMaxAge, localeCookieName, messages } from '@/shared/i18n';
+import { languages, type Lang } from '@/shared/types';
 
-export const locales = ['ko', 'en', 'zh', 'ja'] as const;
-export type Locale = (typeof locales)[number];
+export const locales = languages;
+export type Locale = Lang;
 const STORAGE_KEY = 'dal-bbam-locale';
 
-const messages = {
-  ko: { home: '홈', course: '코스', map: '지도', schedule: '일정', my: '마이' },
-  en: { home: 'Home', course: 'Courses', map: 'Map', schedule: 'Schedule', my: 'My' },
-  zh: { home: '首页', course: '路线', map: '地图', schedule: '行程', my: '我的' },
-  ja: { home: 'ホーム', course: 'コース', map: '地図', schedule: '日程', my: 'マイ' }
-} satisfies Record<Locale, Record<string, string>>;
+type LocaleContextValue = {
+  locale: Locale;
+  setLocale: (locale: Locale) => void;
+  messages: (typeof messages)[Locale];
+};
 
-type LocaleContextValue = { locale: Locale; setLocale: (locale: Locale) => void; messages: (typeof messages)[Locale] };
 const LocaleContext = createContext<LocaleContextValue | null>(null);
 
-function isLocale(value: string | null): value is Locale {
-  return value !== null && locales.includes(value as Locale);
-}
-
-export function LocaleProvider({ children }: { children: React.ReactNode }) {
-  const [locale, setLocale] = useState<Locale>('ko');
-  const [storageReady, setStorageReady] = useState(false);
+export function LocaleProvider({
+  children,
+  initialLocale = 'ko'
+}: {
+  children: React.ReactNode;
+  initialLocale?: Locale;
+}) {
+  const router = useRouter();
+  const [locale, setLocaleState] = useState<Locale>(initialLocale);
 
   useEffect(() => {
     const savedLocale = window.localStorage.getItem(STORAGE_KEY);
-    if (isLocale(savedLocale)) setLocale(savedLocale);
-    setStorageReady(true);
-  }, []);
+    if (isLang(savedLocale) && savedLocale !== initialLocale) {
+      setLocaleState(savedLocale);
+      document.cookie = `${localeCookieName}=${savedLocale}; path=/; max-age=${localeCookieMaxAge}; samesite=lax`;
+      startTransition(() => router.refresh());
+    }
+  }, [initialLocale, router]);
 
-  useEffect(() => {
-    if (!storageReady) return;
-    document.documentElement.lang = locale;
-    window.localStorage.setItem(STORAGE_KEY, locale);
-  }, [locale, storageReady]);
+  function setLocale(nextLocale: Locale) {
+    setLocaleState(nextLocale);
+    document.documentElement.lang = nextLocale;
+    window.localStorage.setItem(STORAGE_KEY, nextLocale);
+    document.cookie = `${localeCookieName}=${nextLocale}; path=/; max-age=${localeCookieMaxAge}; samesite=lax`;
+    startTransition(() => router.refresh());
+  }
 
-  const value = useMemo(() => ({ locale, setLocale, messages: messages[locale] }), [locale]);
+  const value = useMemo(
+    () => ({ locale, setLocale, messages: messages[locale] }),
+    [locale]
+  );
+
   return <LocaleContext.Provider value={value}>{children}</LocaleContext.Provider>;
 }
 

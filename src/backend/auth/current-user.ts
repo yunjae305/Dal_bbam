@@ -4,7 +4,7 @@ import { SESSION_COOKIE, verifySessionToken } from '@/backend/auth/session';
 
 export type CurrentUser = {
   id: string;
-  email: string;
+  email: string | null;
   name?: string;
   provider: 'password' | 'kakao' | 'supabase';
   actorKey: string;

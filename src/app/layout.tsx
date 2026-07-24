@@ -1,7 +1,9 @@
 import type { Metadata, Viewport } from 'next';
+import { cookies } from 'next/headers';
 import './globals.css';
 import { ServiceWorkerRegister } from '@/frontend/components/service-worker-register';
 import { LocaleProvider } from '@/frontend/i18n/locale-context';
+import { isLang, localeCookieName } from '@/shared/i18n';
 
 export const metadata: Metadata = {
   title: 'AI와 함께하는 경주 역사 여행',
@@ -25,15 +27,19 @@ export const viewport: Viewport = {
   themeColor: '#12372f'
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const cookieStore = await cookies();
+  const savedLocale = cookieStore.get(localeCookieName)?.value;
+  const locale = isLang(savedLocale) ? savedLocale : 'ko';
+
   return (
-    <html lang="ko">
+    <html lang={locale}>
       <body>
-        <LocaleProvider>{children}</LocaleProvider>
+        <LocaleProvider initialLocale={locale}>{children}</LocaleProvider>
         <ServiceWorkerRegister />
       </body>
     </html>

@@ -4,14 +4,16 @@ const COOKIE_NAME = 'gy_session';
 const TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7일
 const ISSUER = 'dal-bbam';
 const AUDIENCE = 'dal-bbam-web';
+const DEVELOPMENT_SECRET = 'dal-bbam-local-development-secret-change-me';
 
 export const SESSION_COOKIE = COOKIE_NAME;
+export const SESSION_COOKIE_MAX_AGE = Math.floor(TTL_MS / 1000);
 
 export type SessionProvider = 'password' | 'kakao';
 
 interface Payload {
   sub: string;
-  email: string;
+  email: string | null;
   name?: string;
   provider: SessionProvider;
   iss: typeof ISSUER;
@@ -25,11 +27,24 @@ export type SessionUser = Pick<Payload, 'sub' | 'email' | 'name' | 'provider'>;
 function getJwtSecret(): string {
   const secret = process.env.JWT_SECRET ?? process.env.SESSION_SECRET;
 
-  if (secret && (process.env.NODE_ENV !== 'production' || secret.length >= 32)) {
+  if (secret && secret.length >= 32) {
     return secret;
   }
 
-  return 'gyeongju-travel-demo-secret';
+  if (process.env.NODE_ENV !== 'production') {
+    return DEVELOPMENT_SECRET;
+  }
+
+  throw new Error('JWT_SECRET must be configured with at least 32 characters in production.');
+}
+
+export function getAuthCookieOptions() {
+  return {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax' as const,
+    path: '/'
+  };
 }
 
 function base64UrlJson(value: unknown): string {
@@ -95,7 +110,7 @@ export function verifySessionToken(token: string): SessionUser | null {
       payload.aud !== AUDIENCE ||
       !['password', 'kakao'].includes(payload.provider) ||
       typeof payload.sub !== 'string' ||
-      typeof payload.email !== 'string' ||
+      (payload.email !== null && typeof payload.email !== 'string') ||
       !Number.isInteger(payload.iat) ||
       !Number.isInteger(payload.exp) ||
       payload.iat > now + 60 ||

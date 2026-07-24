@@ -3,6 +3,7 @@ import { TravelMvpApp } from '@/frontend/components/travel-mvp-app';
 import { getTourMvpData } from '@/backend/tour-mvp-data';
 import { createSupabaseServerClient } from '@/backend/supabase/server';
 import { verifySessionToken, SESSION_COOKIE } from '@/backend/auth/session';
+import { isLang, localeCookieName } from '@/shared/i18n';
 
 export default async function Page() {
   const supabase = await createSupabaseServerClient();
@@ -19,5 +20,8 @@ export default async function Page() {
     userEmail = (await supabase.auth.getUser()).data.user?.email ?? null;
   }
 
-  return <TravelMvpApp initialData={await getTourMvpData()} userEmail={userEmail} />;
+  const savedLocale = cookieStore.get(localeCookieName)?.value;
+  const locale = isLang(savedLocale) ? savedLocale : 'ko';
+
+  return <TravelMvpApp initialData={await getTourMvpData(locale)} userEmail={userEmail} />;
 }

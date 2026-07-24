@@ -10,3 +10,6 @@ artifacts/
 *.tsbuildinfo
 *.pdf
 .worktrees/
+playwright-report/
+test-results/
+coverage/

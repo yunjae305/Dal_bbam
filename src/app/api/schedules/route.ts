@@ -1,43 +1,57 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { createSupabaseServerClient } from '@/backend/supabase/server';
+import { randomUUID } from 'node:crypto';
+import { NextRequest } from 'next/server';
+import { apiData, apiError, getUserDataContext, isErrorContext, parseBody } from '@/backend/http';
 
-// GET /api/schedules
-export async function GET() {
-  const supabase = await createSupabaseServerClient();
-  if (!supabase) return NextResponse.json({ error: 'DB 연결 실패' }, { status: 500 });
+type ScheduleBody = {
+  title?: string;
+  startDate?: string;
+  endDate?: string;
+};
 
-  const { data: { user }, error: authError } = await supabase.auth.getUser();
-  if (authError || !user) return NextResponse.json({ error: '로그인이 필요합니다.' }, { status: 401 });
-
-  const { data, error } = await supabase
-    .from('schedules')
-    .select('*, schedule_places(*, places(*))')
-    .eq('user_id', user.id)
-    .order('created_at', { ascending: false });
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ items: data });
+function isDate(value: string | undefined): value is string {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
 }
 
-// POST /api/schedules
-export async function POST(request: NextRequest) {
-  const supabase = await createSupabaseServerClient();
-  if (!supabase) return NextResponse.json({ error: 'DB 연결 실패' }, { status: 500 });
+export async function GET(request: NextRequest) {
+  const context = await getUserDataContext(request);
+  if (isErrorContext(context)) return context.response;
 
-  const { data: { user }, error: authError } = await supabase.auth.getUser();
-  if (authError || !user) return NextResponse.json({ error: '로그인이 필요합니다.' }, { status: 401 });
-
-  const body = await request.json();
-  const { title, start_date, end_date } = body;
-
-  if (!title) return NextResponse.json({ error: 'title 필요' }, { status: 400 });
-
-  const { data, error } = await supabase
+  const { data, error } = await context.db
     .from('schedules')
-    .insert({ user_id: user.id, title, start_date, end_date })
+    .select('*, schedule_places(id, visit_date, start_time, stay_minutes, sort_order, note, places(id, content_id, category, name, description, address, lat, lng, image_url, tags))')
+    .eq('actor_key', context.user.actorKey)
+    .order('created_at', { ascending: false });
+
+  if (error) return apiError('SCHEDULES_READ_FAILED', error.message, 500);
+  return apiData(data ?? [], { headers: { 'Cache-Control': 'private, no-store' } });
+}
+
+export async function POST(request: NextRequest) {
+  const context = await getUserDataContext(request);
+  if (isErrorContext(context)) return context.response;
+
+  const body = await parseBody<ScheduleBody>(request);
+  const startDate = body?.startDate;
+  const endDate = body?.endDate ?? startDate;
+  if (!body?.title?.trim() || body.title.trim().length > 80 || !isDate(startDate) || !isDate(endDate) || endDate < startDate) {
+    return apiError('INVALID_SCHEDULE', '올바른 제목과 시작일·종료일이 필요합니다.');
+  }
+
+  const { data, error } = await context.db
+    .from('schedules')
+    .insert({
+      actor_key: context.user.actorKey,
+      user_id: context.user.supabaseUserId ?? null,
+      title: body.title.trim(),
+      start_date: startDate,
+      end_date: endDate,
+      share_token: randomUUID().replaceAll('-', '')
+    })
     .select()
     .single();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json(data, { status: 201 });
+  if (error) return apiError('SCHEDULE_SAVE_FAILED', error.message, 500);
+  return apiData(data, { status: 201, headers: { 'Cache-Control': 'private, no-store' } });
 }

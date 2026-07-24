@@ -6,6 +6,7 @@ export async function proxy(request: NextRequest) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
   const isLoginPage = request.nextUrl.pathname === '/login';
+  const isPublicShare = /^\/(?:courses|schedule)\/share\/[a-f0-9]{32}$/i.test(request.nextUrl.pathname);
   const token = request.cookies.get(SESSION_COOKIE)?.value;
   const session = token ? verifySessionToken(token) : null;
 
@@ -13,6 +14,9 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(new URL('/', request.url));
   }
   if (session) {
+    return NextResponse.next();
+  }
+  if (isPublicShare) {
     return NextResponse.next();
   }
 

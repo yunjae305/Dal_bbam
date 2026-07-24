@@ -1,59 +1,69 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { createSupabaseServerClient } from '@/backend/supabase/server';
+import { NextRequest } from 'next/server';
+import { apiData, apiError, getUserDataContext, isErrorContext, parseBody } from '@/backend/http';
 
-// GET /api/courses/:id
-export async function GET(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const supabase = await createSupabaseServerClient();
-  if (!supabase) return NextResponse.json({ error: 'DB 연결 실패' }, { status: 500 });
+type RouteContext = { params: Promise<{ id: string }> };
+type CoursePatch = { title?: string; description?: string };
 
+export async function GET(request: NextRequest, { params }: RouteContext) {
+  const context = await getUserDataContext(request);
+  if (isErrorContext(context)) return context.response;
   const { id } = await params;
 
-  const { data, error } = await supabase
+  const { data, error } = await context.db
     .from('courses')
-    .select('*, course_places(order_index, places(*))')
+    .select('*, course_places(order_index, reason, stay_minutes, places(*))')
     .eq('id', id)
-    .single();
+    .or(`actor_key.eq.${context.user.actorKey},is_curated.eq.true`)
+    .maybeSingle();
 
-  if (error || !data) return NextResponse.json({ error: '코스를 찾을 수 없습니다.' }, { status: 404 });
-  return NextResponse.json({ item: data });
+  if (error) return apiError('COURSE_READ_FAILED', error.message, 500);
+  if (!data) return apiError('COURSE_NOT_FOUND', '코스를 찾을 수 없습니다.', 404);
+  return apiData(data, { headers: { 'Cache-Control': 'private, no-store' } });
 }
 
-// PATCH /api/courses/:id
-export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const supabase = await createSupabaseServerClient();
-  if (!supabase) return NextResponse.json({ error: 'DB 연결 실패' }, { status: 500 });
-
-  const { data: { user }, error: authError } = await supabase.auth.getUser();
-  if (authError || !user) return NextResponse.json({ error: '로그인이 필요합니다.' }, { status: 401 });
-
+export async function PATCH(request: NextRequest, { params }: RouteContext) {
+  const context = await getUserDataContext(request);
+  if (isErrorContext(context)) return context.response;
   const { id } = await params;
-  const body = await request.json();
-  const { title, description } = body;
+  const body = await parseBody<CoursePatch>(request);
+  if (!body) return apiError('INVALID_BODY', '올바른 JSON 요청이 필요합니다.');
 
-  const { data, error } = await supabase
+  const patch: CoursePatch & { updated_at: string } = { updated_at: new Date().toISOString() };
+  if (body.title !== undefined) {
+    if (!body.title.trim() || body.title.trim().length > 80) {
+      return apiError('INVALID_TITLE', '코스 제목은 1~80자로 입력해 주세요.');
+    }
+    patch.title = body.title.trim();
+  }
+  if (body.description !== undefined) patch.description = body.description.trim().slice(0, 2000);
+
+  const { data, error } = await context.db
     .from('courses')
-    .update({ title, description })
+    .update(patch)
     .eq('id', id)
-    .eq('user_id', user.id)
+    .eq('actor_key', context.user.actorKey)
     .select()
-    .single();
+    .maybeSingle();
 
-  if (error || !data) return NextResponse.json({ error: '코스를 찾을 수 없습니다.' }, { status: 404 });
-  return NextResponse.json(data);
+  if (error) return apiError('COURSE_UPDATE_FAILED', error.message, 500);
+  if (!data) return apiError('COURSE_NOT_FOUND', '코스를 찾을 수 없습니다.', 404);
+  return apiData(data, { headers: { 'Cache-Control': 'private, no-store' } });
 }
 
-// DELETE /api/courses/:id
-export async function DELETE(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const supabase = await createSupabaseServerClient();
-  if (!supabase) return NextResponse.json({ error: 'DB 연결 실패' }, { status: 500 });
-
-  const { data: { user }, error: authError } = await supabase.auth.getUser();
-  if (authError || !user) return NextResponse.json({ error: '로그인이 필요합니다.' }, { status: 401 });
-
+export async function DELETE(request: NextRequest, { params }: RouteContext) {
+  const context = await getUserDataContext(request);
+  if (isErrorContext(context)) return context.response;
   const { id } = await params;
 
-  const { error } = await supabase.from('courses').delete().eq('id', id).eq('user_id', user.id);
+  const { data, error } = await context.db
+    .from('courses')
+    .delete()
+    .eq('id', id)
+    .eq('actor_key', context.user.actorKey)
+    .select('id')
+    .maybeSingle();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return new NextResponse(null, { status: 204 });
+  if (error) return apiError('COURSE_DELETE_FAILED', error.message, 500);
+  if (!data) return apiError('COURSE_NOT_FOUND', '코스를 찾을 수 없습니다.', 404);
+  return apiData({ deleted: true }, { headers: { 'Cache-Control': 'private, no-store' } });
 }

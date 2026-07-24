@@ -12,13 +12,13 @@ const FALLBACK_IMAGE = '/login-spring-bg.png';
 const GYEONGJU_CENTER: [number, number] = [35.8562, 129.2247];
 
 const CONTENT_TYPE_CATEGORY: Record<string, Place['category']> = {
-  '12': '문화재',
-  '14': '문화재',
-  '15': '축제',
-  '28': '문화재',
-  '32': '숙박',
-  '38': '음식점',
-  '39': '음식점'
+  '12': 'attraction',
+  '14': 'heritage',
+  '15': 'festival',
+  '28': 'experience',
+  '32': 'lodging',
+  '38': 'attraction',
+  '39': 'food'
 };
 
 const CONTENT_TYPE_TAG: Record<string, string> = {
@@ -62,27 +62,33 @@ async function getOverview(contentId: string): Promise<string> {
   }
 }
 
-function toPlace(item: TourPlaceSummary, overview: string, fallbackContentTypeId: string): Place {
+export function mapTourPlaceSummary(
+  item: TourPlaceSummary,
+  overview = '',
+  fallbackContentTypeId = '12'
+): Place {
   const contentTypeId = getContentTypeId(item, fallbackContentTypeId);
   const title = field(item, 'title') || '경주 관광지';
   const address = [field(item, 'addr1'), field(item, 'addr2')].filter(Boolean).join(' ') || '경주시';
-  const category = CONTENT_TYPE_CATEGORY[contentTypeId] ?? '문화재';
+  const category = CONTENT_TYPE_CATEGORY[contentTypeId] ?? 'attraction';
   const tag = CONTENT_TYPE_TAG[contentTypeId] ?? category;
   const mapY = numberField(item, 'mapy');
   const mapX = numberField(item, 'mapx');
 
   return {
     id: field(item, 'contentid') || title,
+    contentId: field(item, 'contentid') || title,
     category,
     name: title,
     description: overview || `${address}에 위치한 경주 ${tag} 정보입니다.`,
     address,
     distance: field(item, 'dist') ? `${field(item, 'dist')}m` : '경주',
     rating: 4.7,
-    bestTime: category === '음식점' ? '12:30 추천' : category === '축제' ? '일정 확인' : '09:00 추천',
+    bestTime: category === 'food' ? '12:30 추천' : category === 'festival' ? '일정 확인' : '09:00 추천',
     image: field(item, 'firstimage') || field(item, 'firstimage2') || FALLBACK_IMAGE,
     tags: [tag, category, field(item, 'cat3')].filter(Boolean),
     coordinates: [mapY ?? GYEONGJU_CENTER[0], mapX ?? GYEONGJU_CENTER[1]],
+    source: 'tour-api',
     translations: {
       en: {
         name: title,
@@ -141,7 +147,9 @@ export async function getTourMvpData(lang: Lang = 'ko'): Promise<MvpData> {
     }
 
     const overviews = await Promise.all(uniquePlaces.map(place => getOverview(field(place.item, 'contentid'))));
-    const places = uniquePlaces.map((place, index) => toPlace(place.item, overviews[index], place.contentTypeId));
+    const places = uniquePlaces.map((place, index) =>
+      mapTourPlaceSummary(place.item, overviews[index], place.contentTypeId)
+    );
 
     return {
       ...fallback,

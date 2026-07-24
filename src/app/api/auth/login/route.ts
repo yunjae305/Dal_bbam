@@ -1,9 +1,15 @@
 import { createSupabaseServerClient } from '@/backend/supabase/server';
-import { createSessionToken, createStableUserId, SESSION_COOKIE } from '@/backend/auth/session';
+import {
+  createSessionToken,
+  createStableUserId,
+  getAuthCookieOptions,
+  SESSION_COOKIE,
+  SESSION_COOKIE_MAX_AGE
+} from '@/backend/auth/session';
 import { NextResponse } from 'next/server';
 
-const DEMO_EMAIL = process.env.DEMO_EMAIL ?? process.env.NEXT_PUBLIC_DEMO_EMAIL ?? process.env.LOGIN_EMAIL ?? 'demo@gyeongju.com';
-const DEMO_PASSWORD = process.env.DEMO_PASSWORD ?? process.env.NEXT_PUBLIC_DEMO_PASSWORD ?? process.env.LOGIN_PASSWORD ?? 'gyeongju2024';
+const DEMO_EMAIL = process.env.DEMO_EMAIL?.trim().toLowerCase() ?? '';
+const DEMO_PASSWORD = process.env.DEMO_PASSWORD ?? '';
 
 export async function POST(request: Request) {
   let body: { email?: unknown; password?: unknown };
@@ -16,15 +22,14 @@ export async function POST(request: Request) {
 
   const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
   const password = typeof body.password === 'string' ? body.password : '';
-  const demoEmail = DEMO_EMAIL.trim().toLowerCase();
-  const isDemoLogin = Boolean(demoEmail && DEMO_PASSWORD && email === demoEmail && password === DEMO_PASSWORD);
+  const isDemoLogin = Boolean(DEMO_EMAIL && DEMO_PASSWORD && email === DEMO_EMAIL && password === DEMO_PASSWORD);
 
   if (!email || !password) {
     return NextResponse.json({ error: '이메일과 비밀번호를 입력해 주세요.' }, { status: 400 });
   }
 
   if (isDemoLogin) {
-    return createLoginResponse(demoEmail);
+    return createLoginResponse(DEMO_EMAIL);
   }
 
   const supabase = await createSupabaseServerClient();
@@ -52,11 +57,8 @@ function createLoginResponse(email: string) {
   });
   const res = NextResponse.json({ success: true });
   res.cookies.set(SESSION_COOKIE, token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    maxAge: 60 * 60 * 24 * 7,
-    path: '/'
+    ...getAuthCookieOptions(),
+    maxAge: SESSION_COOKIE_MAX_AGE
   });
   return res;
 }
