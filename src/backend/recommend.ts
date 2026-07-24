@@ -6,7 +6,7 @@ export function recommendCourse(input: RecommendationRequest): Course {
   const persona = input.persona;
 
   const score = (course: Course) => {
-    const focusScore = course.focus.filter(item => interests.includes(item)).length * 2;
+    const focusScore = course.focus.filter(item => interests.includes(item as (typeof interests)[number])).length * 2;
     const personaScore = persona && course.persona === persona ? 3 : 0;
 
     return focusScore + personaScore;

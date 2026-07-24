@@ -1,35 +1,19 @@
-import { NextResponse } from 'next/server';
-import { getCurrentUser } from '@/backend/auth/current-user';
-import { createSupabaseServerClient } from '@/backend/supabase/server';
-import { createSupabaseAdminClient } from '@/backend/supabase/admin';
+import { NextRequest } from 'next/server';
+import { apiData, apiError, getUserDataContext, isErrorContext } from '@/backend/http';
 
-export async function GET() {
-  const user = await getCurrentUser();
+export async function GET(request: NextRequest) {
+  const context = await getUserDataContext(request);
+  if (isErrorContext(context)) return context.response;
 
-  if (!user) {
-    return NextResponse.json({ error: '로그인이 필요합니다.' }, { status: 401 });
-  }
-
-  const supabase = user.supabaseUserId
-    ? await createSupabaseServerClient()
-    : createSupabaseAdminClient();
-
-  if (!supabase) {
-    return NextResponse.json({ items: [], persisted: false });
-  }
-
-  const { data, error } = await supabase
+  const { data, error } = await context.db
     .from('stamps')
-    .select('id, acquired_at, lat, lng, places(id, content_id, name, category, image_url)')
-    .eq('actor_key', user.actorKey)
+    .select('id, acquired_at, places(id, content_id, name, category, image_url)')
+    .eq('actor_key', context.user.actorKey)
     .order('acquired_at', { ascending: false });
+  if (error) return apiError('STAMPS_READ_FAILED', error.message, 500);
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-
-  return NextResponse.json({
-    items: data ?? [],
-    persisted: true
+  return apiData(data ?? [], {
+    meta: { persisted: true },
+    headers: { 'Cache-Control': 'private, no-store' }
   });
 }

@@ -1,55 +1,120 @@
-import { exchangeKakaoCode, getKakaoUser, KAKAO_STATE_COOKIE } from '@/backend/auth/kakao';
-import { createSessionToken, createStableUserId, SESSION_COOKIE } from '@/backend/auth/session';
 import { timingSafeEqual } from 'crypto';
+import {
+  exchangeKakaoCode,
+  getFrontendUrl,
+  getKakaoUser,
+  KAKAO_STATE_COOKIE
+} from '@/backend/auth/kakao';
+import {
+  createSessionToken,
+  getAuthCookieOptions,
+  SESSION_COOKIE,
+  SESSION_COOKIE_MAX_AGE
+} from '@/backend/auth/session';
+import { findOrCreateSocialUser } from '@/backend/auth/social-users';
 import { NextRequest, NextResponse } from 'next/server';
 
+type LoginError =
+  | 'kakao_cancelled'
+  | 'kakao_authorization_failed'
+  | 'kakao_code_missing'
+  | 'kakao_state_mismatch'
+  | 'kakao_token_failed'
+  | 'kakao_user_failed'
+  | 'kakao_user_persistence_failed';
+
 export async function GET(request: NextRequest) {
-  const { searchParams, origin } = request.nextUrl;
-  const code = searchParams.get('code');
+  const { searchParams } = request.nextUrl;
   const state = searchParams.get('state');
   const savedState = request.cookies.get(KAKAO_STATE_COOKIE)?.value;
 
-  const statesMatch = Boolean(state && savedState) && (() => {
-    const actual = Buffer.from(state!);
-    const expected = Buffer.from(savedState!);
-    return actual.length === expected.length && timingSafeEqual(actual, expected);
-  })();
+  if (!statesMatch(state, savedState)) {
+    return errorResponse(request, 'kakao_state_mismatch');
+  }
 
-  if (!code || !statesMatch) {
-    const response = NextResponse.redirect(`${origin}/login?error=kakao_state`);
-    response.cookies.delete(KAKAO_STATE_COOKIE);
-    return response;
+  const authorizationError = searchParams.get('error');
+  if (authorizationError === 'access_denied') {
+    return errorResponse(request, 'kakao_cancelled');
+  }
+  if (authorizationError) {
+    return errorResponse(request, 'kakao_authorization_failed');
+  }
+
+  const code = searchParams.get('code');
+  if (!code) {
+    return errorResponse(request, 'kakao_code_missing');
+  }
+
+  let accessToken: string;
+  try {
+    accessToken = await exchangeKakaoCode(code);
+  } catch (error) {
+    console.error('[kakao-callback] token exchange failed', getErrorMessage(error));
+    return errorResponse(request, 'kakao_token_failed');
+  }
+
+  let profile: Awaited<ReturnType<typeof getKakaoUser>>;
+  try {
+    profile = await getKakaoUser(accessToken);
+  } catch (error) {
+    console.error('[kakao-callback] user lookup failed', getErrorMessage(error));
+    return errorResponse(request, 'kakao_user_failed');
   }
 
   try {
-    const accessToken = await exchangeKakaoCode({ origin, code });
-    const user = await getKakaoUser(accessToken);
-    const response = NextResponse.redirect(`${origin}/`);
+    const user = await findOrCreateSocialUser({
+      provider: 'kakao',
+      ...profile
+    });
+    const response = NextResponse.redirect(getFrontendUrl(request.nextUrl.origin));
 
     response.cookies.set(SESSION_COOKIE, createSessionToken({
-      sub: createStableUserId('kakao', user.id),
+      sub: user.id,
       email: user.email,
       name: user.name,
       provider: 'kakao'
     }), {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 60 * 60 * 24 * 7,
-      path: '/'
+      ...getAuthCookieOptions(),
+      maxAge: SESSION_COOKIE_MAX_AGE
     });
-    response.cookies.set(KAKAO_STATE_COOKIE, '', {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 0,
-      path: '/'
-    });
+    clearStateCookie(response);
+    response.headers.set('Cache-Control', 'no-store');
 
     return response;
-  } catch {
-    const response = NextResponse.redirect(`${origin}/login?error=kakao_login`);
-    response.cookies.delete(KAKAO_STATE_COOKIE);
-    return response;
+  } catch (error) {
+    console.error('[kakao-callback] social user persistence failed', getErrorMessage(error));
+    return errorResponse(request, 'kakao_user_persistence_failed');
   }
+}
+
+function statesMatch(actual: string | null, expected: string | undefined): boolean {
+  if (!actual || !expected) return false;
+
+  const actualBuffer = Buffer.from(actual);
+  const expectedBuffer = Buffer.from(expected);
+
+  return actualBuffer.length === expectedBuffer.length
+    && timingSafeEqual(actualBuffer, expectedBuffer);
+}
+
+function errorResponse(request: NextRequest, error: LoginError): NextResponse {
+  const loginUrl = new URL('/login', getFrontendUrl(request.nextUrl.origin));
+  loginUrl.searchParams.set('error', error);
+  const response = NextResponse.redirect(loginUrl);
+
+  clearStateCookie(response);
+  response.headers.set('Cache-Control', 'no-store');
+
+  return response;
+}
+
+function clearStateCookie(response: NextResponse): void {
+  response.cookies.set(KAKAO_STATE_COOKIE, '', {
+    ...getAuthCookieOptions(),
+    maxAge: 0
+  });
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : 'Unknown error';
 }

@@ -208,6 +208,14 @@ async function requestTourApi<T>(path: string, params: Record<string, string | n
   const cached = tourApiCache.get(cacheKey) as CacheEntry<T> | undefined;
 
   if (cached && cached.expiresAt > Date.now()) {
+    console.info(JSON.stringify({
+      event: 'provider_request',
+      provider: 'tour-api',
+      operation: path,
+      cacheHit: true,
+      fallback: false,
+      durationMs: 0
+    }));
     return {
       ...cached.value,
       cache: {
@@ -243,6 +251,7 @@ async function fetchAndCacheTourApi<T>(
   cacheKey: string
 ): Promise<TourApiResult<T>> {
   let response: Response;
+  const startedAt = Date.now();
 
   try {
     response = await fetch(buildTourApiUrl(path, params), {
@@ -310,6 +319,16 @@ async function fetchAndCacheTourApi<T>(
     value
   });
 
+  console.info(JSON.stringify({
+    event: 'provider_request',
+    provider: 'tour-api',
+    operation: path,
+    cacheHit: false,
+    fallback: false,
+    durationMs: Date.now() - startedAt,
+    itemCount: value.items.length
+  }));
+
   return {
     ...value,
     cache: {
@@ -367,6 +386,15 @@ export function getTourPlaceDetail(contentId: string) {
     addrinfoYN: 'Y',
     mapinfoYN: 'Y',
     overviewYN: 'Y',
+    numOfRows: '1',
+    pageNo: '1'
+  });
+}
+
+export function getTourPlaceIntro(contentId: string, contentType: string) {
+  return requestTourApi<TourPlaceDetail>('detailIntro2', {
+    contentId: numericId(contentId, 'contentId'),
+    contentTypeId: contentTypeId(contentType),
     numOfRows: '1',
     pageNo: '1'
   });

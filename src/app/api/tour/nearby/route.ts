@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getNearbyTourPlaces, TOUR_API_CACHE_CONTROL, TourApiConfigError, TourApiError } from '@/backend/tour-api';
+import { mapTourPlaceSummary } from '@/backend/tour-mvp-data';
 
 export const runtime = 'nodejs';
 
@@ -22,7 +23,10 @@ export async function GET(request: NextRequest) {
       contentTypeId: params.get('contentTypeId') ?? undefined
     });
 
-    return NextResponse.json(result, { headers: { 'Cache-Control': TOUR_API_CACHE_CONTROL } });
+    return NextResponse.json({
+      ...result,
+      places: result.items.map(item => mapTourPlaceSummary(item))
+    }, { headers: { 'Cache-Control': TOUR_API_CACHE_CONTROL } });
   } catch (error) {
     if (error instanceof TourApiConfigError) {
       return NextResponse.json({ error: error.message }, { status: 500 });

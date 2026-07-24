@@ -1,60 +1,67 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { createSupabaseServerClient } from '@/backend/supabase/server';
+import { NextRequest } from 'next/server';
+import {
+  apiData,
+  apiError,
+  getUserDataContext,
+  isErrorContext,
+  parseBody,
+  resolvePlaceId
+} from '@/backend/http';
 
-// GET /api/cart
-export async function GET() {
-  const supabase = await createSupabaseServerClient();
-  if (!supabase) return NextResponse.json({ error: 'DB 연결 실패' }, { status: 500 });
+type CartBody = { contentId?: string; placeId?: string };
 
-  const { data: { user }, error: authError } = await supabase.auth.getUser();
-  if (authError || !user) return NextResponse.json({ error: '로그인이 필요합니다.' }, { status: 401 });
+export async function GET(request: NextRequest) {
+  const context = await getUserDataContext(request);
+  if (isErrorContext(context)) return context.response;
 
-  const { data, error } = await supabase
+  const { data, error } = await context.db
     .from('cart_items')
-    .select('*, places(*)')
-    .eq('user_id', user.id)
+    .select('id, created_at, places(id, content_id, category, name, description, address, lat, lng, image_url, tags)')
+    .eq('actor_key', context.user.actorKey)
     .order('created_at', { ascending: false });
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ items: data });
+  if (error) return apiError('CART_READ_FAILED', error.message, 500);
+  return apiData(data ?? [], { headers: { 'Cache-Control': 'private, no-store' } });
 }
 
-// POST /api/cart
 export async function POST(request: NextRequest) {
-  const supabase = await createSupabaseServerClient();
-  if (!supabase) return NextResponse.json({ error: 'DB 연결 실패' }, { status: 500 });
+  const context = await getUserDataContext(request);
+  if (isErrorContext(context)) return context.response;
 
-  const { data: { user }, error: authError } = await supabase.auth.getUser();
-  if (authError || !user) return NextResponse.json({ error: '로그인이 필요합니다.' }, { status: 401 });
+  const body = await parseBody<CartBody>(request);
+  const placeInput = body?.contentId ?? body?.placeId;
+  if (!placeInput) return apiError('INVALID_PLACE', 'contentId가 필요합니다.');
 
-  const body = await request.json();
-  const { place_id } = body;
+  const placeId = await resolvePlaceId(context.db, placeInput);
+  if (!placeId) return apiError('PLACE_NOT_FOUND', '관광지를 찾을 수 없습니다.', 404);
 
-  if (!place_id) return NextResponse.json({ error: 'place_id 필요' }, { status: 400 });
-
-  const { data, error } = await supabase
+  const { data, error } = await context.db
     .from('cart_items')
-    .insert({ user_id: user.id, place_id })
-    .select()
+    .upsert({
+      actor_key: context.user.actorKey,
+      user_id: context.user.supabaseUserId ?? null,
+      place_id: placeId
+    }, { onConflict: 'actor_key,place_id' })
+    .select('id, created_at, places(id, content_id, category, name, description, address, lat, lng, image_url, tags)')
     .single();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json(data, { status: 201 });
+  if (error) return apiError('CART_SAVE_FAILED', error.message, 500);
+  return apiData(data, { status: 201, headers: { 'Cache-Control': 'private, no-store' } });
 }
 
-// DELETE /api/cart?id=xxx
 export async function DELETE(request: NextRequest) {
-  const supabase = await createSupabaseServerClient();
-  if (!supabase) return NextResponse.json({ error: 'DB 연결 실패' }, { status: 500 });
-
-  const { data: { user }, error: authError } = await supabase.auth.getUser();
-  if (authError || !user) return NextResponse.json({ error: '로그인이 필요합니다.' }, { status: 401 });
+  const context = await getUserDataContext(request);
+  if (isErrorContext(context)) return context.response;
 
   const id = request.nextUrl.searchParams.get('id');
-  if (!id) return NextResponse.json({ error: 'id 필요' }, { status: 400 });
+  if (!id) return apiError('INVALID_CART_ITEM', 'id가 필요합니다.');
 
-  const { error } = await supabase.from('cart_items').delete().eq('id', id).eq('user_id', user.id);
+  const { error } = await context.db
+    .from('cart_items')
+    .delete()
+    .eq('id', id)
+    .eq('actor_key', context.user.actorKey);
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return new NextResponse(null, { status: 204 });
+  if (error) return apiError('CART_DELETE_FAILED', error.message, 500);
+  return apiData({ deleted: true }, { headers: { 'Cache-Control': 'private, no-store' } });
 }

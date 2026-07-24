@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { getSupabaseEnv } from '@/backend/supabase/env';
-import type { Category, Lang, Place } from '@/shared/types';
+import { placeCategories, type Lang, type Place, type PlaceCategory } from '@/shared/types';
 
 type PlaceRow = {
   id: string;
@@ -22,12 +22,22 @@ type PlaceRow = {
 
 const DEFAULT_IMAGE = '/login-spring-bg.png';
 const GYEONGJU_CENTER: [number, number] = [35.8562, 129.2247];
-const categories = new Set<Category>(['문화재', '음식점', '숙박', '축제']);
+const legacyCategories: Record<string, PlaceCategory> = {
+  문화재: 'heritage',
+  관광지: 'attraction',
+  음식점: 'food',
+  숙박: 'lodging',
+  축제: 'festival',
+  자연: 'nature',
+  체험: 'experience'
+};
 
-function normalizeCategory(category: string | null): Place['category'] {
-  return categories.has(category as Category) && category !== '전체'
-    ? category as Place['category']
-    : '문화재';
+export function normalizePlaceCategory(category: string | null): PlaceCategory {
+  if (category && placeCategories.includes(category as PlaceCategory)) {
+    return category as PlaceCategory;
+  }
+
+  return category ? legacyCategories[category] ?? 'attraction' : 'attraction';
 }
 
 function descriptionForLang(row: PlaceRow, lang: Lang): string {
@@ -40,22 +50,25 @@ function descriptionForLang(row: PlaceRow, lang: Lang): string {
 function mapPlaceRow(row: PlaceRow, lang: Lang): Place {
   const name = row.name || '경주 관광지';
   const description = descriptionForLang(row, lang) || '경주 관광 정보입니다.';
+  const category = normalizePlaceCategory(row.category);
 
   return {
     id: row.content_id || row.id,
-    category: normalizeCategory(row.category),
+    contentId: row.content_id || row.id,
+    category,
     name,
     description,
     address: row.address || '경주시',
     distance: '경주',
     rating: 4.7,
-    bestTime: normalizeCategory(row.category) === '음식점' ? '12:30 추천' : '09:00 추천',
+    bestTime: category === 'food' ? '12:30 추천' : '09:00 추천',
     image: row.image_url || DEFAULT_IMAGE,
-    tags: row.tags?.length ? row.tags : [normalizeCategory(row.category)],
+    tags: row.tags?.length ? row.tags : [category],
     coordinates: [
       typeof row.lat === 'number' ? row.lat : GYEONGJU_CENTER[0],
       typeof row.lng === 'number' ? row.lng : GYEONGJU_CENTER[1]
     ],
+    source: 'database',
     translations: {
       en: {
         name,
@@ -75,16 +88,10 @@ function mapPlaceRow(row: PlaceRow, lang: Lang): Place {
 
 export async function getSupabasePlaces(lang: Lang = 'ko'): Promise<Place[]> {
   const env = getSupabaseEnv();
-
-  if (!env.url || !env.serverKey) {
-    return [];
-  }
+  if (!env.url || !env.serverKey) return [];
 
   const supabase = createClient(env.url, env.serverKey, {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false
-    }
+    auth: { persistSession: false, autoRefreshToken: false }
   });
 
   const { data, error } = await supabase
@@ -93,9 +100,6 @@ export async function getSupabasePlaces(lang: Lang = 'ko'): Promise<Place[]> {
     .order('created_at', { ascending: false })
     .limit(100);
 
-  if (error || !data?.length) {
-    return [];
-  }
-
+  if (error || !data?.length) return [];
   return data.map(row => mapPlaceRow(row as PlaceRow, lang));
 }

@@ -1,9 +1,11 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { getCurrentUser } from '@/backend/auth/current-user';
 import { distanceMeters, isValidCoordinate } from '@/backend/geo';
-import { getTourMvpData } from '@/backend/tour-mvp-data';
-import { createSupabaseServerClient } from '@/backend/supabase/server';
 import { createSupabaseAdminClient } from '@/backend/supabase/admin';
+import { awardStampBadges } from '@/backend/badges';
+import { apiData, apiError, isMutationAllowed } from '@/backend/http';
+import { hasCurrentLocationConsent } from '@/shared/location-consent';
+import type { Badge } from '@/shared/types';
 
 const DEFAULT_STAMP_RADIUS_M = 150;
 const STAMP_RADIUS_M = Number(process.env.STAMP_RADIUS_M ?? DEFAULT_STAMP_RADIUS_M);
@@ -19,13 +21,10 @@ function validUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
-async function findSupabasePlace(placeId: string) {
-  const supabase = createSupabaseAdminClient() ?? await createSupabaseServerClient();
-
-  if (!supabase) {
-    return null;
-  }
-
+async function findSupabasePlace(
+  placeId: string,
+  supabase: NonNullable<ReturnType<typeof createSupabaseAdminClient>>
+) {
   const query = supabase
     .from('places')
     .select('id, content_id, name, lat, lng')
@@ -49,10 +48,31 @@ async function findSupabasePlace(placeId: string) {
 }
 
 export async function POST(request: NextRequest) {
+  if (!isMutationAllowed(request)) {
+    return apiError('ORIGIN_REJECTED', '허용되지 않은 요청 출처입니다.', 403);
+  }
   const user = await getCurrentUser();
 
   if (!user) {
-    return NextResponse.json({ error: '로그인이 필요합니다.' }, { status: 401 });
+    return apiError('UNAUTHENTICATED', '로그인이 필요합니다.', 401);
+  }
+  const supabase = createSupabaseAdminClient();
+  if (!supabase) {
+    return apiError('DATABASE_UNAVAILABLE', '스탬프 저장소가 설정되지 않았습니다.', 503);
+  }
+
+  const { data: consent, error: consentError } = await supabase
+    .from('location_consents')
+    .select('consent_version, granted, created_at')
+    .eq('actor_key', user.actorKey)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (consentError) {
+    return apiError('CONSENT_READ_FAILED', '위치정보 동의를 확인하지 못했습니다.', 500);
+  }
+  if (!hasCurrentLocationConsent(consent)) {
+    return apiError('LOCATION_CONSENT_REQUIRED', '스탬프 확인 전에 위치정보 사용에 동의해 주세요.', 403);
   }
 
   let body: VerifyBody;
@@ -60,7 +80,7 @@ export async function POST(request: NextRequest) {
   try {
     body = await request.json() as VerifyBody;
   } catch {
-    return NextResponse.json({ error: '올바른 JSON 요청이 필요합니다.' }, { status: 400 });
+    return apiError('INVALID_BODY', '올바른 JSON 요청이 필요합니다.');
   }
 
   const placeId = typeof body.placeId === 'string' ? body.placeId.trim() : '';
@@ -69,29 +89,33 @@ export async function POST(request: NextRequest) {
   const accuracyMeters = body.accuracyMeters;
 
   if (!placeId) {
-    return NextResponse.json({ error: 'placeId가 필요합니다.' }, { status: 400 });
+    return apiError('INVALID_PLACE', 'placeId가 필요합니다.');
   }
 
   if (!isValidCoordinate(lat, lng)) {
-    return NextResponse.json({ error: '유효한 GPS 좌표가 필요합니다.' }, { status: 400 });
+    return apiError('INVALID_COORDINATES', '유효한 GPS 좌표가 필요합니다.');
   }
 
   if (
     accuracyMeters !== undefined &&
     (!Number.isFinite(accuracyMeters) || accuracyMeters < 0 || accuracyMeters > 100)
   ) {
-    return NextResponse.json({ error: 'GPS 정확도가 100m 이내일 때 다시 시도해 주세요.' }, { status: 422 });
+    return apiError('LOW_ACCURACY', 'GPS 정확도가 100m 이내일 때 다시 시도해 주세요.', 422);
   }
 
-  const supabasePlace = await findSupabasePlace(placeId);
-  const appPlace = supabasePlace
-    ? null
-    : (await getTourMvpData()).places.find(place => place.id === placeId);
-  const targetLat = supabasePlace?.lat ?? appPlace?.coordinates[0];
-  const targetLng = supabasePlace?.lng ?? appPlace?.coordinates[1];
+  const supabasePlace = await findSupabasePlace(placeId, supabase);
+  if (!supabasePlace) {
+    return apiError(
+      'STAMP_PLACE_NOT_SYNCED',
+      '이 장소는 아직 스탬프 대상에 등록되지 않았습니다. 관광 데이터 동기화 후 다시 시도해 주세요.',
+      409
+    );
+  }
+  const targetLat = supabasePlace.lat;
+  const targetLng = supabasePlace.lng;
 
   if (!isValidCoordinate(Number(targetLat), Number(targetLng))) {
-    return NextResponse.json({ error: '장소 좌표를 찾을 수 없습니다.' }, { status: 404 });
+    return apiError('PLACE_NOT_FOUND', '장소 좌표를 찾을 수 없습니다.', 404);
   }
 
   const distance = Math.round(distanceMeters({ lat, lng }, { lat: Number(targetLat), lng: Number(targetLng) }));
@@ -99,25 +123,29 @@ export async function POST(request: NextRequest) {
   const verified = distance <= radius;
   let persisted = false;
   let alreadyAcquired = false;
+  let awardedBadges: Badge[] = [];
 
-  if (verified && supabasePlace) {
-    const supabase = user.supabaseUserId
-      ? await createSupabaseServerClient()
-      : createSupabaseAdminClient();
-    const { error } = supabase
-      ? await supabase.from('stamps').insert({
-          actor_key: user.actorKey,
-          user_id: user.supabaseUserId ?? null,
-          place_id: supabasePlace.id,
-          lat,
-          lng
-        })
-      : { error: null };
+  if (verified) {
+    const { error } = await supabase.from('stamps').insert({
+      actor_key: user.actorKey,
+      user_id: user.supabaseUserId ?? null,
+      place_id: supabasePlace.id,
+      lat: null,
+      lng: null,
+      accuracy_m: accuracyMeters ?? null,
+      distance_m: distance
+    });
     alreadyAcquired = error?.code === '23505';
+    if (error && !alreadyAcquired) {
+      return apiError('STAMP_SAVE_FAILED', '스탬프를 저장하지 못했습니다. 다시 시도해 주세요.', 500);
+    }
     persisted = !error || alreadyAcquired;
+    if (persisted) {
+      awardedBadges = await awardStampBadges(supabase, user.actorKey);
+    }
   }
 
-  return NextResponse.json({
+  const result = {
     verified,
     persisted,
     alreadyAcquired,
@@ -125,10 +153,14 @@ export async function POST(request: NextRequest) {
     radiusMeters: radius,
     accuracyMeters: accuracyMeters ?? null,
     place: {
-      id: supabasePlace?.content_id || supabasePlace?.id || appPlace?.id,
-      name: supabasePlace?.name || appPlace?.name
-    }
-  }, {
-    status: verified ? 200 : 422
-  });
+      id: supabasePlace.content_id || supabasePlace.id,
+      name: supabasePlace.name
+    },
+    awardedBadges
+  };
+
+  if (!verified) {
+    return apiError('OUTSIDE_RADIUS', `스탬프 획득 반경 밖입니다. 현재 거리 ${distance}m, 허용 반경 ${radius}m입니다.`, 422, result);
+  }
+  return apiData(result, { headers: { 'Cache-Control': 'private, no-store' } });
 }

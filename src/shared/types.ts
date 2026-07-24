@@ -1,10 +1,57 @@
-export type Lang = 'ko' | 'en' | 'ja' | 'zh';
+export const languages = ['ko', 'en', 'ja', 'zh'] as const;
+export type Lang = (typeof languages)[number];
 
-export type Category = '전체' | '문화재' | '음식점' | '숙박' | '축제';
+export const placeCategories = [
+  'heritage',
+  'attraction',
+  'food',
+  'lodging',
+  'festival',
+  'nature',
+  'experience'
+] as const;
 
+export type PlaceCategory = (typeof placeCategories)[number];
+export type Category = 'all' | PlaceCategory;
+export type TransportMode = 'walking' | 'car' | 'public';
+
+export type LocalizedText = Partial<Record<Lang, {
+  name: string;
+  description: string;
+}>>;
+
+export type PlaceSummary = {
+  contentId: string;
+  category: PlaceCategory;
+  name: string;
+  description: string;
+  address: string;
+  imageUrl: string;
+  coordinates: [number, number];
+  tags: string[];
+  rating?: number;
+  distanceMeters?: number;
+  source: 'database' | 'tour-api' | 'sample';
+};
+
+export type PlaceDetail = PlaceSummary & {
+  phone?: string;
+  openingHours?: string;
+  homepageUrl?: string;
+  images: string[];
+  reviewSummary?: string;
+  overview: string;
+  fetchedAt?: string;
+};
+
+/**
+ * Existing screen model. New server APIs expose PlaceSummary/PlaceDetail, while
+ * this shape keeps the current UI compatible during the App Router migration.
+ */
 export type Place = {
   id: string;
-  category: Exclude<Category, '전체'>;
+  contentId: string;
+  category: PlaceCategory;
   name: string;
   description: string;
   address: string;
@@ -14,10 +61,67 @@ export type Place = {
   image: string;
   tags: string[];
   coordinates: [number, number];
-  translations: Record<Exclude<Lang, 'ko'>, {
-    name: string;
-    description: string;
-  }>;
+  translations: LocalizedText;
+  source?: PlaceSummary['source'];
+};
+
+export type Narration = {
+  id: string;
+  contentId: string;
+  lang: Lang;
+  title: string;
+  summary: string;
+  narration: string;
+  tags: string[];
+  isAiGenerated: boolean;
+  audioUrl?: string;
+  promptVersion: string;
+};
+
+export type ShortItem = {
+  id: string;
+  contentId: string;
+  title: string;
+  summary: string;
+  narration: string;
+  imageUrl: string;
+  durationSeconds: number;
+  tags: string[];
+  liked: boolean;
+  saved: boolean;
+  likeCount: number;
+  isAiGenerated: boolean;
+  audioUrl?: string;
+};
+
+export type CourseRequest = {
+  purpose?: string;
+  days: number;
+  companion: 'solo' | 'couple' | 'family' | 'friends' | 'group';
+  interests: PlaceCategory[];
+  pace: 'relaxed' | 'balanced' | 'packed';
+  transport: TransportMode;
+  lang: Lang;
+};
+
+export type CourseStop = {
+  contentId: string;
+  order: number;
+  reason: string;
+  stayMinutes: number;
+  place?: PlaceSummary;
+};
+
+export type CoursePlan = {
+  id?: string;
+  title: string;
+  summary: string;
+  stops: CourseStop[];
+  transport: TransportMode;
+  totalDistanceMeters: number;
+  estimatedMinutes: number;
+  generatedBy: 'openai' | 'fallback' | 'curated';
+  shareToken?: string;
 };
 
 export type Course = {
@@ -41,6 +145,68 @@ export type ShortClip = {
   tags: string[];
 };
 
+export type ScheduleItem = {
+  id: string;
+  contentId: string;
+  visitDate: string;
+  startTime?: string;
+  stayMinutes: number;
+  sortOrder: number;
+  note?: string;
+  place?: PlaceSummary;
+};
+
+export type Schedule = {
+  id: string;
+  title: string;
+  startDate: string;
+  endDate: string;
+  items: ScheduleItem[];
+  shareToken?: string;
+};
+
+export type CartItem = {
+  id: string;
+  contentId: string;
+  createdAt: string;
+  place?: PlaceSummary;
+};
+
+export type StampProgress = {
+  id: string;
+  contentId: string;
+  acquiredAt: string;
+  place?: PlaceSummary;
+};
+
+export type Badge = {
+  id: string;
+  code: string;
+  name: string;
+  description: string;
+  icon: string;
+  earnedAt?: string;
+};
+
+export type CommunityPost = {
+  id: string;
+  category: 'review' | 'tip' | 'food' | 'lodging';
+  contentId?: string;
+  title: string;
+  content: string;
+  rating?: number;
+  mediaUrls: string[];
+  authorName: string;
+  isOwner?: boolean;
+  bookmarked: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ApiSuccess<T> = { data: T; meta?: Record<string, unknown> };
+export type ApiFailure = { error: { code: string; message: string; details?: unknown } };
+export type ApiResponse<T> = ApiSuccess<T> | ApiFailure;
+
 export type MvpData = {
   overview: {
     name: string;
@@ -55,7 +221,6 @@ export type MvpData = {
   shorts: ShortClip[];
 };
 
-export type RecommendationRequest = {
-  interests?: string[];
+export type RecommendationRequest = Partial<CourseRequest> & {
   persona?: string;
 };

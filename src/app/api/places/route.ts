@@ -1,40 +1,46 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
+import { apiData } from '@/backend/http';
 import { getTourMvpData } from '@/backend/tour-mvp-data';
-import type { Category, Lang } from '@/shared/types';
+import { isLang } from '@/shared/i18n';
+import { placeCategories, type Category, type Lang, type PlaceSummary } from '@/shared/types';
 
 function getLang(request: NextRequest): Lang {
   const lang = request.nextUrl.searchParams.get('lang');
-
-  if (lang === 'en' || lang === 'ja' || lang === 'zh') {
-    return lang;
-  }
-
-  return 'ko';
+  return isLang(lang) ? lang : 'ko';
 }
 
 function getCategory(request: NextRequest): Category {
   const category = request.nextUrl.searchParams.get('category');
-
-  if (category === '문화재' || category === '음식점' || category === '숙박' || category === '축제') {
-    return category;
-  }
-
-  return '전체';
+  return placeCategories.includes(category as (typeof placeCategories)[number])
+    ? category as Category
+    : 'all';
 }
 
 export async function GET(request: NextRequest) {
   const q = (request.nextUrl.searchParams.get('q') ?? '').trim().toLowerCase();
   const category = getCategory(request);
-  const data = await getTourMvpData(getLang(request));
-  const places = data.places
-    .filter(place => category === '전체' || place.category === category)
-    .filter(place => {
-      if (!q) {
-        return true;
-      }
+  const mvp = await getTourMvpData(getLang(request));
+  const items: PlaceSummary[] = mvp.places
+    .filter(place => category === 'all' || place.category === category)
+    .filter(place => !q || [place.name, place.description, place.address, ...place.tags]
+      .join(' ')
+      .toLowerCase()
+      .includes(q))
+    .map(place => ({
+      contentId: place.contentId,
+      category: place.category,
+      name: place.name,
+      description: place.description,
+      address: place.address,
+      imageUrl: place.image,
+      coordinates: place.coordinates,
+      tags: place.tags,
+      rating: place.rating,
+      source: place.source ?? 'sample'
+    }));
 
-      return [place.name, place.description, place.address, place.category, ...place.tags].join(' ').toLowerCase().includes(q);
-    });
-
-  return NextResponse.json({ items: places });
+  return apiData(items, {
+    meta: { query: q, category, count: items.length },
+    headers: { 'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=1800' }
+  });
 }

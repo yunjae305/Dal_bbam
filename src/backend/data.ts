@@ -24,7 +24,8 @@ export const mvpData: MvpData = {
   places: [
     {
       id: 'donggung-wolji',
-      category: '문화재',
+      contentId: 'donggung-wolji',
+      category: 'heritage',
       name: '동궁과 월지',
       description: '신라 왕궁의 별궁 터와 연못 야경을 함께 볼 수 있는 경주 대표 문화재입니다.',
       address: '경주시 원화로 102',
@@ -51,7 +52,8 @@ export const mvpData: MvpData = {
     },
     {
       id: 'bulguksa',
-      category: '문화재',
+      contentId: 'bulguksa',
+      category: 'heritage',
       name: '불국사',
       description: '유네스코 세계문화유산으로 석가탑과 다보탑을 만나는 신라 불교문화의 상징입니다.',
       address: '경주시 불국로 385',
@@ -78,7 +80,8 @@ export const mvpData: MvpData = {
     },
     {
       id: 'hwangnidan',
-      category: '음식점',
+      contentId: 'hwangnidan',
+      category: 'food',
       name: '황리단길 로컬 맛집',
       description: '한옥 골목을 따라 지역 디저트, 한식, 카페를 한 번에 탐색할 수 있는 거리입니다.',
       address: '경주시 포석로 일대',
@@ -105,7 +108,8 @@ export const mvpData: MvpData = {
     },
     {
       id: 'bomun-stay',
-      category: '숙박',
+      contentId: 'bomun-stay',
+      category: 'lodging',
       name: '보문 관광단지 숙박',
       description: '호수 산책과 리조트 숙박을 연결해 가족 여행 동선을 편하게 만들 수 있는 권역입니다.',
       address: '경주시 보문로 일대',
@@ -132,7 +136,8 @@ export const mvpData: MvpData = {
     },
     {
       id: 'silla-festival',
-      category: '축제',
+      contentId: 'silla-festival',
+      category: 'festival',
       name: '신라문화제',
       description: '신라 역사와 공연, 체험 콘텐츠를 결합한 경주 대표 축제입니다.',
       address: '경주 시내 일원',
@@ -227,10 +232,13 @@ export function getLocalizedPlaces(lang: Lang): Place[] {
       return place;
     }
 
+    const translation = place.translations[lang];
+    if (!translation) return place;
+
     return {
       ...place,
-      name: place.translations[lang].name,
-      description: place.translations[lang].description
+      name: translation.name,
+      description: translation.description
     };
   });
 }
