@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Eye, EyeOff, Lock, Loader2, Mail, UserRound } from 'lucide-react';
+import { Eye, EyeOff, Lock, Loader2, Mail, Sparkles, UserRound } from 'lucide-react';
 
 type Mode = 'login' | 'signup';
 
@@ -55,6 +55,27 @@ export default function LoginPage() {
 
   function startKakaoLogin() {
     window.location.assign('/api/auth/kakao/login');
+  }
+
+  async function startDemoLogin() {
+    setError('');
+    setMessage('');
+    setLoading(true);
+
+    try {
+      const res = await fetch('/api/auth/demo', { method: 'POST', credentials: 'include' });
+      const result = await res.json() as { error?: string };
+
+      if (!res.ok) {
+        setError(result.error ?? '데모 로그인에 실패했습니다.');
+      } else {
+        window.location.replace('/');
+      }
+    } catch {
+      setError('네트워크 연결을 확인해 주세요.');
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -283,6 +304,15 @@ export default function LoginPage() {
                 >
                   <img src="/google-logo.svg" alt="" className="h-[18px] w-[18px]" aria-hidden="true" />
                   Continue with Google
+                </button>
+                <button
+                  type="button"
+                  onClick={startDemoLogin}
+                  disabled={loading}
+                  className="flex h-10 items-center justify-center gap-2 rounded-sm bg-[#2f7567]/95 text-[12px] font-black text-white shadow-[0_8px_20px_rgba(0,0,0,0.22)] transition active:scale-[0.99] disabled:opacity-65"
+                >
+                  {loading ? <Loader2 className="animate-spin" size={16} /> : <Sparkles size={16} />}
+                  데모 계정으로 체험하기
                 </button>
               </div>
             )}

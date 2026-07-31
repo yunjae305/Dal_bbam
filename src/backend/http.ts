@@ -37,12 +37,20 @@ export async function parseBody<T>(request: NextRequest): Promise<T | null> {
 export function isMutationAllowed(request: NextRequest): boolean {
   const site = request.headers.get('sec-fetch-site');
   if (site === 'cross-site') return false;
+  if (site === 'same-origin') return true;
 
   const origin = request.headers.get('origin');
   if (!origin) return true;
 
+  // nextUrl reflects the server's bind address (e.g. 0.0.0.0 in dev, an
+  // internal host behind a proxy), so compare against the request Host first.
+  const requestHost =
+    request.headers.get('x-forwarded-host')?.split(',')[0]?.trim() ||
+    request.headers.get('host');
+
   try {
-    return new URL(origin).origin === request.nextUrl.origin;
+    const originUrl = new URL(origin);
+    return originUrl.host === requestHost || originUrl.origin === request.nextUrl.origin;
   } catch {
     return false;
   }

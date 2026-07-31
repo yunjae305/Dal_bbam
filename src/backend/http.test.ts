@@ -24,4 +24,40 @@ describe('mutation origin checks', () => {
     });
     expect(isMutationAllowed(request)).toBe(true);
   });
+
+  it('accepts requests whose origin matches the Host header even when nextUrl differs', () => {
+    // dev server bound to 0.0.0.0: nextUrl reports the bind address, not the
+    // address the browser used.
+    const request = new NextRequest('http://0.0.0.0:3000/api/auth/demo', {
+      method: 'POST',
+      headers: {
+        origin: 'http://localhost:3000',
+        host: 'localhost:3000'
+      }
+    });
+    expect(isMutationAllowed(request)).toBe(true);
+  });
+
+  it('accepts proxied requests via x-forwarded-host', () => {
+    const request = new NextRequest('http://127.0.0.1:3000/api/cart', {
+      method: 'POST',
+      headers: {
+        origin: 'https://dal-bbam.example',
+        host: '127.0.0.1:3000',
+        'x-forwarded-host': 'dal-bbam.example'
+      }
+    });
+    expect(isMutationAllowed(request)).toBe(true);
+  });
+
+  it('rejects a foreign origin that matches neither host nor nextUrl', () => {
+    const request = new NextRequest('http://localhost:3000/api/cart', {
+      method: 'POST',
+      headers: {
+        origin: 'https://attacker.example',
+        host: 'localhost:3000'
+      }
+    });
+    expect(isMutationAllowed(request)).toBe(false);
+  });
 });
