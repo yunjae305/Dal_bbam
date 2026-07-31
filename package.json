@@ -8,6 +8,7 @@
     "build": "next build --webpack",
     "start": "next start --hostname 0.0.0.0",
     "sync:tour": "node --env-file=.env.local scripts/sync-tour-places.mjs",
+    "seed:courses": "node --env-file=.env.local scripts/seed-curated-courses.mjs",
     "pregenerate:ai": "node --env-file=.env.local scripts/pregenerate-ai.mjs",
     "typecheck": "tsc --noEmit --incremental false",
     "test": "vitest run",

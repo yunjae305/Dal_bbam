@@ -1,7 +1,8 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import { Bookmark, Check, LoaderCircle, Share2, Sparkles } from 'lucide-react';
+import Link from 'next/link';
+import { useEffect, useMemo, useState } from 'react';
+import { Bookmark, Check, LoaderCircle, Map as MapIcon, Share2, Sparkles } from 'lucide-react';
 import type {
   CoursePlan,
   CourseRequest,
@@ -12,6 +13,30 @@ import { PhoneStatus, HeaderBar } from '@/frontend/components/common/ui';
 import { useLocale } from '@/frontend/i18n/locale-context';
 
 type Props = { places: Place[] };
+
+type CuratedCourse = {
+  id: string;
+  title: string;
+  description: string | null;
+  transport: string;
+  is_curated: boolean;
+  course_places: Array<{
+    order_index: number;
+    reason: string | null;
+    stay_minutes: number;
+    places: {
+      content_id: string;
+      name: string;
+      image_url: string | null;
+    } | null;
+  }> | null;
+};
+
+const transportLabels: Record<string, string> = {
+  walking: '도보',
+  car: '자동차',
+  public: '대중교통'
+};
 
 const categories: PlaceCategory[] = ['heritage', 'attraction', 'food', 'nature', 'experience', 'festival'];
 
@@ -32,8 +57,21 @@ export function AiCourseScreen({ places }: Props) {
   const [saved, setSaved] = useState(false);
   const [shareToken, setShareToken] = useState('');
   const [error, setError] = useState('');
+  const [curated, setCurated] = useState<CuratedCourse[]>([]);
 
   const byId = useMemo(() => new Map(places.map(place => [place.contentId, place])), [places]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch('/api/courses', { signal: controller.signal, cache: 'no-store' })
+      .then(async response => {
+        if (!response.ok) return;
+        const payload = await response.json() as { data?: CuratedCourse[] };
+        setCurated((payload.data ?? []).filter(course => course.is_curated));
+      })
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, []);
 
   function toggleInterest(category: PlaceCategory) {
     setRequest(current => ({
@@ -208,6 +246,54 @@ export function AiCourseScreen({ places }: Props) {
               })}
             </ol>
           </article>
+        )}
+
+        {curated.length > 0 && (
+          <div className="mt-7">
+            <h2 className="text-[16px] font-black tracking-[-0.02em]">큐레이션 추천 코스</h2>
+            <p className="mt-1 text-[10px] font-bold text-[#8d95a1]">테마별로 미리 준비된 검증된 코스예요.</p>
+            <div className="mt-3 space-y-4">
+              {curated.map(course => {
+                const stops = [...(course.course_places ?? [])].sort((a, b) => a.order_index - b.order_index);
+                return (
+                  <article key={course.id} className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-black/5">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="inline-flex items-center gap-1 rounded-full bg-[#eef3ee] px-2 py-0.5 text-[9px] font-black text-[#2f7567]">
+                          <MapIcon size={10} /> {transportLabels[course.transport] ?? course.transport} 코스
+                        </p>
+                        <h3 className="mt-2 text-[15px] font-black">{course.title}</h3>
+                        {course.description && (
+                          <p className="mt-1 text-[10px] leading-4 text-[#727b87]">{course.description}</p>
+                        )}
+                      </div>
+                    </div>
+                    <ol className="mt-3 space-y-2">
+                      {stops.map((stop, index) => (
+                        <li key={`${course.id}-${stop.order_index}`}>
+                          {stop.places ? (
+                            <Link
+                              href={`/places/${encodeURIComponent(stop.places.content_id)}`}
+                              className="grid grid-cols-[22px_44px_1fr] items-center gap-2 rounded-xl p-1 transition-colors hover:bg-[#faf8f4]"
+                            >
+                              <span className="grid h-5 w-5 place-items-center rounded-full bg-[#2f7567] text-[9px] font-black text-white">{index + 1}</span>
+                              <img src={stop.places.image_url || '/login-spring-bg.png'} alt={stop.places.name} className="h-9 w-11 rounded-lg object-cover" />
+                              <span className="min-w-0">
+                                <span className="block truncate text-[11px] font-black">{stop.places.name}</span>
+                                <span className="mt-0.5 block truncate text-[9px] text-[#7e8793]">{stop.reason} · {stop.stay_minutes}분</span>
+                              </span>
+                            </Link>
+                          ) : (
+                            <span className="text-[10px] text-[#7e8793]">삭제된 장소</span>
+                          )}
+                        </li>
+                      ))}
+                    </ol>
+                  </article>
+                );
+              })}
+            </div>
+          </div>
         )}
       </div>
     </section>

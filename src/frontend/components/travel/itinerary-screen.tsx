@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { CalendarDays, ChevronDown, ChevronUp, GripVertical, LoaderCircle, Pencil, Plus, Share2, Trash2, X } from 'lucide-react';
 import type { Place } from '@/shared/types';
 import { PhoneStatus, HeaderBar } from '@/frontend/components/common/ui';
@@ -38,6 +38,8 @@ export function ItineraryScreen({ places }: Props) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [touchDrag, setTouchDrag] = useState<{ from: number; over: number } | null>(null);
+  const listRef = useRef<HTMLOListElement>(null);
   const [placeToAdd, setPlaceToAdd] = useState(places[0]?.contentId ?? '');
   const [editing, setEditing] = useState(false);
   const [draftTitle, setDraftTitle] = useState('');
@@ -157,6 +159,37 @@ export function ItineraryScreen({ places }: Props) {
         : schedule
     ));
     void persistItems(next);
+  }
+
+  // HTML5 drag events never fire on touch screens, so the grip handle also
+  // supports pointer-based dragging for the PWA use case.
+  function startTouchDrag(event: React.PointerEvent, index: number) {
+    if (event.pointerType === 'mouse') return;
+    event.preventDefault();
+    (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+    setTouchDrag({ from: index, over: index });
+  }
+
+  function updateTouchDrag(event: React.PointerEvent) {
+    if (!touchDrag || !listRef.current) return;
+    const rows = Array.from(listRef.current.querySelectorAll('li'));
+    if (!rows.length) return;
+    const y = event.clientY;
+    let over = touchDrag.over;
+    rows.forEach((row, index) => {
+      const rect = row.getBoundingClientRect();
+      if (y >= rect.top && y <= rect.bottom) over = index;
+    });
+    if (y < rows[0].getBoundingClientRect().top) over = 0;
+    if (y > rows[rows.length - 1].getBoundingClientRect().bottom) over = rows.length - 1;
+    if (over !== touchDrag.over) setTouchDrag({ ...touchDrag, over });
+  }
+
+  function endTouchDrag() {
+    if (!touchDrag) return;
+    const { from, over } = touchDrag;
+    setTouchDrag(null);
+    if (from !== over) moveAt(from, over);
   }
 
   function moveAt(index: number, targetIndex: number) {
@@ -329,7 +362,7 @@ export function ItineraryScreen({ places }: Props) {
                 })}
               </div>
             ) : (
-              <ol className="mt-4 space-y-3">
+              <ol ref={listRef} className="mt-4 space-y-3">
                 {sortedItems.map((item, index) => (
                   <li
                     key={`${item.places.content_id}-${index}`}
@@ -337,7 +370,9 @@ export function ItineraryScreen({ places }: Props) {
                     onDragStart={() => setDragIndex(index)}
                     onDragOver={event => event.preventDefault()}
                     onDrop={() => dropAt(index)}
-                    className="grid grid-cols-[28px_52px_1fr_58px] items-center gap-3 rounded-xl bg-white p-2 shadow-sm ring-1 ring-black/5"
+                    className={`grid grid-cols-[28px_52px_1fr_58px] items-center gap-3 rounded-xl bg-white p-2 shadow-sm ring-1 ring-black/5 transition-shadow ${
+                      touchDrag?.from === index ? 'opacity-70 ring-2 ring-[#223c72]' : ''
+                    } ${touchDrag && touchDrag.over === index && touchDrag.from !== index ? 'ring-2 ring-[#ff5b4f]' : ''}`}
                   >
                     <span className="grid h-7 w-7 place-items-center rounded-full bg-[#223c72] text-[10px] font-black text-white">{index + 1}</span>
                     <img src={item.places.image_url || '/login-spring-bg.png'} alt={item.places.name} className="h-12 w-[52px] rounded-lg object-cover" />
@@ -354,7 +389,17 @@ export function ItineraryScreen({ places }: Props) {
                     <div className="grid grid-cols-2 gap-1">
                       <button type="button" onClick={() => moveAt(index, index - 1)} disabled={saving || index === 0} className="grid h-8 place-items-center rounded-lg bg-[#eef0f3] disabled:opacity-30" aria-label={`${item.places.name} 위로 이동`}><ChevronUp size={14} /></button>
                       <button type="button" onClick={() => moveAt(index, index + 1)} disabled={saving || index === sortedItems.length - 1} className="grid h-8 place-items-center rounded-lg bg-[#eef0f3] disabled:opacity-30" aria-label={`${item.places.name} 아래로 이동`}><ChevronDown size={14} /></button>
-                      <GripVertical size={15} className="col-span-2 mx-auto text-[#a9afb7]" aria-label="데스크톱에서는 드래그하여 순서 변경" />
+                      <button
+                        type="button"
+                        onPointerDown={event => startTouchDrag(event, index)}
+                        onPointerMove={updateTouchDrag}
+                        onPointerUp={endTouchDrag}
+                        onPointerCancel={() => setTouchDrag(null)}
+                        className="col-span-2 grid h-8 w-full touch-none place-items-center rounded-lg bg-[#f7f8f9] text-[#a9afb7]"
+                        aria-label={`${item.places.name} 드래그하여 순서 변경`}
+                      >
+                        <GripVertical size={15} />
+                      </button>
                     </div>
                   </li>
                 ))}
