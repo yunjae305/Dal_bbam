@@ -17,6 +17,7 @@ const ko = {
     retry: '다시 시도',
     loading: '불러오는 중…',
     signInRequired: '로그인이 필요합니다.',
+    logout: '로그아웃',
     empty: '아직 표시할 항목이 없습니다.'
   },
   categories: {
@@ -31,6 +32,8 @@ const ko = {
   home: {
     eyebrow: '경주, 신라와 달밤',
     headline: '특별한 하루를 시작해볼까요?',
+    aiRecommendation: 'AI 추천',
+    transportation: '교통',
     today: '오늘의 추천',
     themes: '테마 코스 추천',
     personalized: '{name}님을 위한 추천',
@@ -101,6 +104,7 @@ export const messages: Record<Lang, MessagesShape> = {
       retry: 'Try again',
       loading: 'Loading…',
       signInRequired: 'Please sign in.',
+      logout: 'Log out',
       empty: 'Nothing to show yet.'
     },
     categories: {
@@ -115,6 +119,8 @@ export const messages: Record<Lang, MessagesShape> = {
     home: {
       eyebrow: 'Gyeongju under the Silla moon',
       headline: 'Ready to start a special day?',
+      aiRecommendation: 'AI picks',
+      transportation: 'Transit',
       today: "Today's picks",
       themes: 'Themed routes',
       personalized: 'Picks for {name}',
@@ -171,6 +177,7 @@ export const messages: Record<Lang, MessagesShape> = {
       retry: 'もう一度',
       loading: '読み込み中…',
       signInRequired: 'ログインが必要です。',
+      logout: 'ログアウト',
       empty: '表示する項目がありません。'
     },
     categories: {
@@ -185,6 +192,8 @@ export const messages: Record<Lang, MessagesShape> = {
     home: {
       eyebrow: '慶州、新羅と月夜',
       headline: '特別な一日を始めませんか？',
+      aiRecommendation: 'AIおすすめ',
+      transportation: '交通',
       today: '今日のおすすめ',
       themes: 'テーマコース',
       personalized: '{name}さんへのおすすめ',
@@ -241,6 +250,7 @@ export const messages: Record<Lang, MessagesShape> = {
       retry: '重试',
       loading: '加载中…',
       signInRequired: '请先登录。',
+      logout: '退出登录',
       empty: '暂无内容。'
     },
     categories: {
@@ -255,6 +265,8 @@ export const messages: Record<Lang, MessagesShape> = {
     home: {
       eyebrow: '庆州，新罗与月夜',
       headline: '开启特别的一天吧？',
+      aiRecommendation: 'AI推荐',
+      transportation: '交通',
       today: '今日推荐',
       themes: '主题路线',
       personalized: '为{name}推荐',

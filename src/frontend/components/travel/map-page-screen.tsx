@@ -32,8 +32,8 @@ export function MapPageScreen({ places }: { places: Place[] }) {
   const selected = visible.find(place => place.contentId === selectedId) ?? visible[0];
 
   return (
-    <section className="grid min-h-[calc(100dvh-112px)] md:grid-cols-[380px_1fr]">
-      <aside className="order-2 max-h-[45dvh] overflow-y-auto bg-[#faf8f4] p-4 md:order-1 md:max-h-[calc(100dvh-112px)] md:p-5">
+    <section className="grid min-h-[calc(100dvh-112px)]">
+      <aside className="order-2 max-h-[45dvh] overflow-y-auto bg-[#faf8f4] p-4">
         <h1 className="text-xl font-black">{messages.map.title}</h1>
         {(nearbyLoading || nearbyPlaces.length > 0) && (
           <p className="mt-2 rounded-lg bg-[#e8f2ed] px-3 py-2 text-[10px] font-bold text-[#2f7567]" role="status">
@@ -67,7 +67,7 @@ export function MapPageScreen({ places }: { places: Place[] }) {
           ))}
         </div>
       </aside>
-      <div className="relative order-1 min-h-[55dvh] md:order-2 md:min-h-0">
+      <div className="relative order-1 min-h-[55dvh]">
         <KakaoMapExplorer
           places={visible}
           selectedPlace={selected}

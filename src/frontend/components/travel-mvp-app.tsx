@@ -3,22 +3,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  CalendarDays,
   Check,
-  CircleUserRound,
   Home,
-  Landmark,
-  Map as MapIcon,
   MapPin,
-  MessageCircle,
-  PlaySquare,
   Search,
   Settings2,
-  Sparkles,
-  Utensils,
   X
 } from 'lucide-react';
-import type { LucideIcon } from 'lucide-react';
 import type { Category, MvpData, Place, PlaceCategory, PlaceSummary } from '@/shared/types';
 import { PhoneStatus } from '@/frontend/components/common/ui';
 import { EmptyState } from '@/frontend/components/common/feedback';
@@ -29,18 +20,25 @@ import { KakaoMapExplorer } from './travel/kakao-map-explorer';
 type HomePanel = 'main' | 'all';
 type MapFilter = Category;
 type PersonalizedRecommendation = { place: Place; reasonCategory: PlaceCategory | null };
+type HomeCategory = {
+  id: 'ai' | 'transport' | 'food' | 'festival' | 'map' | 'shorts' | 'community' | 'all';
+  icon: string;
+  filter?: MapFilter;
+  href?: string;
+  panel?: HomePanel;
+};
 
 const mapFilters: MapFilter[] = ['all', 'attraction', 'food', 'lodging', 'heritage'];
-const homeHeroImage = 'https://commons.wikimedia.org/wiki/Special:FilePath/Water_reflection_of_Donggung_Palace_in_Wolji_Pond_at_blue_hour_in_Gyeongju_South_Korea.jpg';
-const homeCategories: Array<{ id: string; icon: LucideIcon; filter?: MapFilter; panel?: HomePanel }> = [
-  { id: 'attraction', icon: Landmark, filter: 'attraction' },
-  { id: 'food', icon: Utensils, filter: 'food' },
-  { id: 'experience', icon: Sparkles, filter: 'experience' },
-  { id: 'festival', icon: CalendarDays, filter: 'festival' },
-  { id: 'map', icon: MapIcon, filter: 'all' },
-  { id: 'shorts', icon: PlaySquare },
-  { id: 'community', icon: MessageCircle },
-  { id: 'all', icon: CircleUserRound, panel: 'all' }
+const homeHeroImage = '/assets/home/images/경주-야경-사진.jpg';
+const homeCategories: HomeCategory[] = [
+  { id: 'ai', icon: '/assets/home/icons/카테고리-AI추천.png', href: '/courses' },
+  { id: 'transport', icon: '/assets/home/icons/카테고리-교통.png', href: '/map' },
+  { id: 'food', icon: '/assets/home/icons/카테고리-음식.png', filter: 'food' },
+  { id: 'festival', icon: '/assets/home/icons/카테고리-축제.png', filter: 'festival' },
+  { id: 'map', icon: '/assets/home/icons/카테고리-지도.png', filter: 'all' },
+  { id: 'shorts', icon: '/assets/home/icons/카테고리-쇼츠.png', href: '/shorts' },
+  { id: 'community', icon: '/assets/home/icons/카테고리-커뮤니티.png', href: '/community' },
+  { id: 'all', icon: '/assets/home/icons/카테고리-전체보기.png', panel: 'all' }
 ];
 
 export function TravelMvpApp({ initialData, userEmail }: { initialData: MvpData; userEmail?: string | null }) {
@@ -182,6 +180,8 @@ function HomeScreen({
   const { messages } = useLocale();
 
   const labelForHomeCategory = (id: string) => {
+    if (id === 'ai') return messages.home.aiRecommendation;
+    if (id === 'transport') return messages.home.transportation;
     if (id === 'map') return messages.nav.map;
     if (id === 'shorts') return messages.home.shorts;
     if (id === 'community') return messages.home.community;
@@ -193,17 +193,16 @@ function HomeScreen({
     <section className="min-h-[calc(100dvh-40px)] bg-[#f5f1ea]">
       <div className="relative min-h-[284px] bg-[#2d2a26] text-white">
         <img
-          className="absolute inset-0 h-full w-full object-cover"
+          className="absolute inset-0 h-full w-full object-cover outline outline-1 -outline-offset-1 outline-black/10"
           src={homeHeroImage}
           alt=""
-          onError={event => { event.currentTarget.src = '/login-spring-bg.png'; }}
         />
         <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,.08),rgba(0,0,0,.2)_48%,rgba(0,0,0,.46))]" />
         <div className="relative z-10">
           <PhoneStatus dark />
           <div className="px-6 pt-8">
             <p className="text-[11px] font-bold text-white/85">경주, 신라와 달밤</p>
-            <h1 className="mt-1 max-w-[190px] text-[18px] font-black leading-[1.25]">
+            <h1 className="mt-1 max-w-[190px] text-balance text-[18px] font-black leading-[1.25]">
               특별한 하루를<br />시작해볼까요?🌙
             </h1>
           </div>
@@ -216,7 +215,12 @@ function HomeScreen({
             onSearch();
           }}
         >
-          <Search size={15} />
+          <img
+            src="/assets/common/icons/검색.png"
+            alt=""
+            aria-hidden="true"
+            className="h-[15px] w-[15px] object-contain"
+          />
           <input
             className="min-w-0 flex-1 bg-transparent text-[11px] font-semibold outline-none placeholder:text-[#817b73]"
             value={query}
@@ -232,34 +236,33 @@ function HomeScreen({
           )}
         </form>
 
-        <div className="absolute inset-x-10 bottom-[-56px] z-20 rounded-xl bg-[#eee9df]/95 px-4 py-3 shadow-[0_10px_28px_rgba(0,0,0,.28)]">
-          <div className="grid grid-cols-4 gap-y-3">
-            {homeCategories.map(({ id, icon: Icon, filter, panel }) => (
+      </div>
+
+      <div className="relative z-20 mx-10 -mt-14 rounded-xl bg-[#eee9df]/95 px-4 py-3 shadow-[0_10px_28px_rgba(0,0,0,.28)]">
+        <div className="grid grid-cols-4 gap-y-3">
+            {homeCategories.map(({ id, icon, filter, href, panel }) => (
               <button
                 key={id}
-                className="flex flex-col items-center gap-1 text-[10px] font-bold text-[#25211d]"
+                className="flex min-h-12 flex-col items-center justify-center gap-1 text-[10px] font-bold text-[#25211d] transition-transform active:scale-[0.96]"
                 type="button"
                 onClick={() => {
                   if (panel === 'all') {
                     onOpenAll();
                   } else if (filter) {
                     onCategory(filter);
-                  } else if (id === 'shorts') {
-                    window.location.href = '/shorts';
-                  } else if (id === 'community') {
-                    window.location.href = '/community';
+                  } else if (href) {
+                    window.location.href = href;
                   }
                 }}
               >
-                <Icon size={21} strokeWidth={1.8} />
+                <img src={icon} alt="" aria-hidden="true" className="h-7 w-7 object-contain" />
                 {labelForHomeCategory(id)}
               </button>
             ))}
-          </div>
         </div>
       </div>
 
-      <div className="px-5 pt-[72px]">
+      <div className="px-5 pt-6">
         <SectionHeader title={messages.home.today} action={`${messages.common.viewAll} >`} onAction={onOpenAll} />
         <div className="grid grid-cols-3 gap-4 px-4">
           {popularPlaces.map(place => (
@@ -339,6 +342,8 @@ function HomeAllScreen({
 }) {
   const { messages } = useLocale();
   const categoryLabel = (id: string) => {
+    if (id === 'ai') return messages.home.aiRecommendation;
+    if (id === 'transport') return messages.home.transportation;
     if (id === 'map') return messages.nav.map;
     if (id === 'shorts') return messages.home.shorts;
     if (id === 'community') return messages.home.community;
@@ -355,33 +360,31 @@ function HomeAllScreen({
             <h1 className="text-[22px] font-black tracking-[-0.03em]">전체보기</h1>
             <p className="mt-1 text-[11px] font-bold text-[#8f98a6]">카테고리와 투어를 선택해 이동하세요.</p>
           </div>
-          <button className="grid h-8 w-8 place-items-center rounded-full bg-[#f1f2f4] text-[#69707c]" type="button" onClick={onClose} aria-label="닫기">
-            <X size={17} />
+          <button className="grid h-10 w-10 place-items-center rounded-full bg-[#f1f2f4] transition-transform active:scale-[0.96]" type="button" onClick={onClose} aria-label="닫기">
+            <img src="/assets/common/icons/닫기.png" alt="" aria-hidden="true" className="h-4 w-4 object-contain opacity-55" />
           </button>
         </div>
 
         <div className="mt-5 grid grid-cols-4 gap-3">
-          {homeCategories.filter(item => item.id !== 'all').map(({ id, icon: Icon, filter }) => (
+          {homeCategories.filter(item => item.id !== 'all').map(({ id, icon, filter, href }) => (
             <button
               key={id}
-              className="flex min-h-[64px] flex-col items-center justify-center gap-1.5 rounded-2xl bg-white text-[10px] font-black text-[#25211d] shadow-sm ring-1 ring-black/5"
+              className="flex min-h-[72px] flex-col items-center justify-center gap-1.5 rounded-2xl bg-white text-[10px] font-black text-[#25211d] shadow-sm ring-1 ring-black/5 transition-transform active:scale-[0.96]"
               type="button"
               onClick={() => {
                 if (filter) {
                   onCategory(filter);
-                } else if (id === 'shorts') {
-                  window.location.href = '/shorts';
-                } else if (id === 'community') {
-                  window.location.href = '/community';
+                } else if (href) {
+                  window.location.href = href;
                 }
               }}
             >
-              <Icon size={22} strokeWidth={1.8} />
+              <img src={icon} alt="" aria-hidden="true" className="h-8 w-8 object-contain" />
               {categoryLabel(id)}
             </button>
           ))}
           <button
-            className="flex min-h-[64px] flex-col items-center justify-center gap-1.5 rounded-2xl bg-white text-[10px] font-black text-[#25211d] shadow-sm ring-1 ring-black/5"
+            className="flex min-h-[72px] flex-col items-center justify-center gap-1.5 rounded-2xl bg-white text-[10px] font-black text-[#25211d] shadow-sm ring-1 ring-black/5 transition-transform active:scale-[0.96]"
             type="button"
             onClick={onOpenStamp}
           >

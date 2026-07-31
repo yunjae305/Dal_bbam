@@ -263,7 +263,7 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-[#3d353a]/95 text-[13px] font-bold text-white shadow-[0_10px_28px_rgba(0,0,0,0.34)] transition active:scale-[0.99] disabled:opacity-65"
+              className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-[#3d353a]/95 text-[13px] font-bold text-white shadow-[0_10px_28px_rgba(0,0,0,0.34)] transition-[transform,opacity] active:scale-[0.96] disabled:opacity-65"
             >
               {loading && <Loader2 className="animate-spin" size={17} />}
               {isSignup ? '가입하기' : '로그인'}
@@ -288,28 +288,34 @@ export default function LoginPage() {
                 <button
                   type="button"
                   onClick={startKakaoLogin}
-                  className="h-[45px] overflow-hidden rounded-xl shadow-[0_8px_20px_rgba(0,0,0,0.25)] transition active:scale-[0.99]"
+                  className="flex h-[45px] w-full items-center justify-center rounded-xl transition-transform active:scale-[0.96]"
                   aria-label="카카오 로그인"
                 >
                   <img
-                    src="https://developers.kakao.com/tool/resource/static/img/button/login/full/ko/kakao_login_medium_wide.png"
-                    alt="카카오 로그인"
-                    className="h-full w-full object-fill"
+                    src="/assets/auth/images/카카오-로그인-버튼.png"
+                    alt=""
+                    aria-hidden="true"
+                    className="h-[45px] w-[183px] object-contain shadow-[0_8px_20px_rgba(0,0,0,0.25)]"
                   />
                 </button>
                 <button
                   type="button"
                   onClick={() => showSocialNotice('Google')}
-                  className="flex h-10 items-center justify-center gap-3 rounded-sm bg-white text-[12px] font-black text-[#4a4a4a] shadow-[0_8px_20px_rgba(0,0,0,0.22)]"
+                  className="flex h-11 w-full items-center justify-center transition-transform active:scale-[0.96]"
+                  aria-label="Google 로그인"
                 >
-                  <img src="/google-logo.svg" alt="" className="h-[18px] w-[18px]" aria-hidden="true" />
-                  Continue with Google
+                  <img
+                    src="/assets/auth/images/구글-로그인-버튼.png"
+                    alt=""
+                    aria-hidden="true"
+                    className="h-10 w-[189px] object-contain shadow-[0_8px_20px_rgba(0,0,0,0.22)]"
+                  />
                 </button>
                 <button
                   type="button"
                   onClick={startDemoLogin}
                   disabled={loading}
-                  className="flex h-10 items-center justify-center gap-2 rounded-sm bg-[#2f7567]/95 text-[12px] font-black text-white shadow-[0_8px_20px_rgba(0,0,0,0.22)] transition active:scale-[0.99] disabled:opacity-65"
+                  className="flex h-11 items-center justify-center gap-2 rounded-sm bg-[#2f7567]/95 text-[12px] font-black text-white shadow-[0_8px_20px_rgba(0,0,0,0.22)] transition-[transform,opacity] active:scale-[0.96] disabled:opacity-65"
                 >
                   {loading ? <Loader2 className="animate-spin" size={16} /> : <Sparkles size={16} />}
                   데모 계정으로 체험하기
