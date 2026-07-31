@@ -33,9 +33,16 @@ const ko = {
     headline: '특별한 하루를 시작해볼까요?',
     today: '오늘의 추천',
     themes: '테마 코스 추천',
+    personalized: '{name}님을 위한 추천',
+    personalizedHint: '최근 본 장소와 찜 목록을 반영했어요',
     shorts: '쇼츠',
     community: '커뮤니티',
     stamps: '스탬프 투어'
+  },
+  stamps: {
+    themes: '테마 코스',
+    themeCompleted: '코스 완료!',
+    themeProgress: '스탬프 진행률'
   },
   map: {
     title: '경주 지도',
@@ -72,6 +79,7 @@ type MessagesShape = {
   common: Record<keyof typeof ko.common, string>;
   categories: Record<PlaceCategory, string>;
   home: Record<keyof typeof ko.home, string>;
+  stamps: Record<keyof typeof ko.stamps, string>;
   map: Record<keyof typeof ko.map, string>;
   ai: Record<keyof typeof ko.ai, string>;
   community: Record<keyof typeof ko.community, string>;
@@ -109,9 +117,16 @@ export const messages: Record<Lang, MessagesShape> = {
       headline: 'Ready to start a special day?',
       today: "Today's picks",
       themes: 'Themed routes',
+      personalized: 'Picks for {name}',
+      personalizedHint: 'Based on places you viewed and saved',
       shorts: 'Shorts',
       community: 'Community',
       stamps: 'Stamp tour'
+    },
+    stamps: {
+      themes: 'Themed routes',
+      themeCompleted: 'Route complete!',
+      themeProgress: 'Stamp progress'
     },
     map: {
       title: 'Gyeongju map',
@@ -172,9 +187,16 @@ export const messages: Record<Lang, MessagesShape> = {
       headline: '特別な一日を始めませんか？',
       today: '今日のおすすめ',
       themes: 'テーマコース',
+      personalized: '{name}さんへのおすすめ',
+      personalizedHint: '最近見た場所と保存リストを反映しました',
       shorts: 'ショート',
       community: 'コミュニティ',
       stamps: 'スタンプツアー'
+    },
+    stamps: {
+      themes: 'テーマコース',
+      themeCompleted: 'コース達成！',
+      themeProgress: 'スタンプ進捗'
     },
     map: {
       title: '慶州地図',
@@ -235,9 +257,16 @@ export const messages: Record<Lang, MessagesShape> = {
       headline: '开启特别的一天吧？',
       today: '今日推荐',
       themes: '主题路线',
+      personalized: '为{name}推荐',
+      personalizedHint: '基于你最近浏览和收藏的地点',
       shorts: '短视频',
       community: '社区',
       stamps: '印章之旅'
+    },
+    stamps: {
+      themes: '主题路线',
+      themeCompleted: '路线完成！',
+      themeProgress: '印章进度'
     },
     map: {
       title: '庆州地图',

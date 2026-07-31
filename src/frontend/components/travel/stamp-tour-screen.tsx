@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Award, Check, ChevronLeft, LoaderCircle, LockKeyhole, MapPin, ShieldCheck, X } from 'lucide-react';
 import type { Badge, Place } from '@/shared/types';
+import { getStampThemeProgress, type StampThemeId } from '@/shared/stamp-themes';
 import { Metric } from '@/frontend/components/common/ui';
 import { readLocationConsent, saveLocationConsent } from '@/frontend/location-consent';
 import { useLocale } from '@/frontend/i18n/locale-context';
@@ -24,11 +25,18 @@ export function StampTourScreen({ places, onExplore, onBack }: Props) {
   const [loading, setLoading] = useState(true);
   const [consent, setConsent] = useState<boolean | null | 'loading'>('loading');
   const [pendingPlace, setPendingPlace] = useState<Place | null>(null);
+  const [themeFilter, setThemeFilter] = useState<'all' | StampThemeId>('all');
 
   const acquired = useMemo(
     () => new Set(stamps.map(stamp => stamp.places.content_id)),
     [stamps]
   );
+  const themeProgress = useMemo(() => getStampThemeProgress(places, acquired), [places, acquired]);
+  const visiblePlaces = useMemo(() => {
+    if (themeFilter === 'all') return places;
+    const theme = themeProgress.find(item => item.theme.id === themeFilter)?.theme;
+    return theme ? places.filter(place => theme.categories.includes(place.category)) : places;
+  }, [places, themeFilter, themeProgress]);
 
   async function refresh() {
     setLoading(true);
@@ -213,6 +221,55 @@ export function StampTourScreen({ places, onExplore, onBack }: Props) {
           </div>
         )}
 
+        {themeProgress.length > 0 && (
+          <div className="mt-6">
+            <div className="flex items-center justify-between">
+              <h2 className="text-[17px] font-black tracking-[-0.02em]">{localeMessages.stamps.themes}</h2>
+              {themeFilter !== 'all' && (
+                <button
+                  type="button"
+                  onClick={() => setThemeFilter('all')}
+                  className="rounded-full bg-[#eef1ef] px-3 py-1 text-[10px] font-black text-[#5f645f]"
+                >
+                  {localeMessages.common.all}
+                </button>
+              )}
+            </div>
+            <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
+              {themeProgress.map(({ theme, total, acquired: themeAcquired, completed }) => {
+                const active = themeFilter === theme.id;
+                return (
+                  <button
+                    key={theme.id}
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() => setThemeFilter(current => (current === theme.id ? 'all' : theme.id))}
+                    className={`min-w-[132px] shrink-0 rounded-xl border p-3 text-left transition ${active ? 'border-[#ff6b55] bg-[#fff2ee]' : 'border-[#ece5db] bg-[#faf8f5]'}`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <p className="text-[11px] font-black text-[#202631]">{theme.name[locale]}</p>
+                      {completed && (
+                        <span className="grid h-4 w-4 place-items-center rounded-full bg-[#2f7567] text-white"><Check size={10} /></span>
+                      )}
+                    </div>
+                    <p className="mt-1 line-clamp-2 text-[9px] leading-3.5 text-[#8d8578]">{theme.description[locale]}</p>
+                    <div className="mt-2 flex items-center justify-between text-[9px] font-bold text-[#9aa1aa]">
+                      <span>{completed ? localeMessages.stamps.themeCompleted : localeMessages.stamps.themeProgress}</span>
+                      <span>{themeAcquired} / {total}</span>
+                    </div>
+                    <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-[#fde5df]">
+                      <div
+                        className={`h-full rounded-full transition-[width] ${completed ? 'bg-[#2f7567]' : 'bg-[#ff6b55]'}`}
+                        style={{ width: `${total ? Math.min(100, (themeAcquired / total) * 100) : 0}%` }}
+                      />
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         <div className="mt-5 flex items-end justify-between gap-3">
           <div>
             <h2 className="text-[17px] font-black tracking-[-0.02em]">경주 스탬프 도감</h2>
@@ -222,7 +279,7 @@ export function StampTourScreen({ places, onExplore, onBack }: Props) {
         </div>
 
         <div className="mt-4 grid grid-cols-2 gap-4">
-          {places.map(place => {
+          {visiblePlaces.map(place => {
             const collected = acquired.has(place.contentId);
             const status = statuses[place.contentId] ?? 'idle';
             const busy = status === 'loading';

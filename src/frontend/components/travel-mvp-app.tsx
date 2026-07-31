@@ -19,7 +19,7 @@ import {
   X
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import type { Category, MvpData, Place, PlaceSummary } from '@/shared/types';
+import type { Category, MvpData, Place, PlaceCategory, PlaceSummary } from '@/shared/types';
 import { PhoneStatus } from '@/frontend/components/common/ui';
 import { EmptyState } from '@/frontend/components/common/feedback';
 import { DirectPageShell } from '@/frontend/components/common/direct-page-shell';
@@ -28,6 +28,7 @@ import { KakaoMapExplorer } from './travel/kakao-map-explorer';
 
 type HomePanel = 'main' | 'all';
 type MapFilter = Category;
+type PersonalizedRecommendation = { place: Place; reasonCategory: PlaceCategory | null };
 
 const mapFilters: MapFilter[] = ['all', 'attraction', 'food', 'lodging', 'heritage'];
 const homeHeroImage = 'https://commons.wikimedia.org/wiki/Special:FilePath/Water_reflection_of_Donggung_Palace_in_Wolji_Pond_at_blue_hour_in_Gyeongju_South_Korea.jpg';
@@ -49,6 +50,7 @@ export function TravelMvpApp({ initialData, userEmail }: { initialData: MvpData;
   const [query, setQuery] = useState('');
   const [recentPlaceId, setRecentPlaceId] = useState('');
   const [popularPlaces, setPopularPlaces] = useState(initialData.places.slice(0, 3));
+  const [personalized, setPersonalized] = useState<PersonalizedRecommendation[]>([]);
 
   useEffect(() => {
     try {
@@ -74,6 +76,27 @@ export function TravelMvpApp({ initialData, userEmail }: { initialData: MvpData;
     return () => controller.abort();
   }, [initialData.places, locale]);
 
+  useEffect(() => {
+    if (!userEmail) return;
+    const controller = new AbortController();
+    fetch(`/api/home/personalized?lang=${locale}`, { signal: controller.signal, cache: 'no-store' })
+      .then(async response => {
+        if (!response.ok) return;
+        const payload = await response.json() as {
+          data?: { recommendations?: Array<PlaceSummary & { reasonCategory: PlaceCategory | null }> };
+        };
+        const recommendations = payload.data?.recommendations;
+        if (!recommendations?.length) return;
+        const initialById = new Map(initialData.places.map(place => [place.contentId, place]));
+        setPersonalized(recommendations.slice(0, 2).map(({ reasonCategory, ...summary }) => ({
+          place: initialById.get(summary.contentId) ?? summaryToPlace(summary),
+          reasonCategory
+        })));
+      })
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, [initialData.places, locale, userEmail]);
+
   function openMap(filter: MapFilter, searchQuery = '') {
     const params = new URLSearchParams();
     if (filter !== 'all') params.set('category', filter);
@@ -95,6 +118,8 @@ export function TravelMvpApp({ initialData, userEmail }: { initialData: MvpData;
               onOpenAll={() => setHomePanel('all')}
               onOpenPlace={contentId => router.push(`/places/${encodeURIComponent(contentId)}`)}
               recentPlace={initialData.places.find(place => place.contentId === recentPlaceId)}
+              personalized={personalized}
+              userName={userEmail ? userEmail.split('@')[0] : null}
             />
           )}
           {homePanel === 'all' && (
@@ -138,7 +163,9 @@ function HomeScreen({
   onCategory,
   onOpenAll,
   onOpenPlace,
-  recentPlace
+  recentPlace,
+  personalized,
+  userName
 }: {
   places: Place[];
   popularPlaces: Place[];
@@ -149,6 +176,8 @@ function HomeScreen({
   onOpenAll: () => void;
   onOpenPlace: (contentId: string) => void;
   recentPlace?: Place;
+  personalized: PersonalizedRecommendation[];
+  userName?: string | null;
 }) {
   const { messages } = useLocale();
 
@@ -254,11 +283,46 @@ function HomeScreen({
         )}
 
         <Divider />
-        <SectionHeader title={messages.home.themes} action={`${messages.common.viewAll} >`} onAction={onOpenAll} />
-        <div className="space-y-5 px-3">
-          <CoursePreview image={places[0]?.image} title="OO님, 이런 야경 산책 코스 어때요?" />
-          <CoursePreview image={places[1]?.image} title="맛집 추천 코스" />
-        </div>
+        {personalized.length > 0 ? (
+          <>
+            <SectionHeader
+              title={messages.home.personalized.replace('{name}', userName ?? '')}
+              action={`${messages.common.viewAll} >`}
+              onAction={onOpenAll}
+            />
+            <p className="mb-4 px-1 text-[10px] font-bold text-[#8f8677]">{messages.home.personalizedHint}</p>
+            <div className="space-y-5 px-3">
+              {personalized.map(({ place, reasonCategory }) => (
+                <button
+                  key={place.contentId}
+                  type="button"
+                  className="block w-full text-left"
+                  onClick={() => onOpenPlace(place.contentId)}
+                >
+                  <span className="block h-[118px] overflow-hidden rounded-lg bg-[#d8d8d8]">
+                    <img className="h-full w-full object-cover" src={place.image} alt={place.name} />
+                  </span>
+                  <span className="mt-3 flex items-center gap-2">
+                    <span className="truncate text-[11px] font-bold">{place.name}</span>
+                    {reasonCategory && (
+                      <span className="shrink-0 rounded-full bg-[#eee9df] px-2 py-0.5 text-[9px] font-black text-[#7a6f5d]">
+                        #{messages.categories[reasonCategory]}
+                      </span>
+                    )}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </>
+        ) : (
+          <>
+            <SectionHeader title={messages.home.themes} action={`${messages.common.viewAll} >`} onAction={onOpenAll} />
+            <div className="space-y-5 px-3">
+              <CoursePreview image={places[0]?.image} title="OO님, 이런 야경 산책 코스 어때요?" />
+              <CoursePreview image={places[1]?.image} title="맛집 추천 코스" />
+            </div>
+          </>
+        )}
       </div>
     </section>
   );

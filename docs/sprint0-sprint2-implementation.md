@@ -23,7 +23,7 @@
 | ID | 현재 상태 | 비고 |
 |---|---|---|
 | FR-HOME-001 | 구현 | 카테고리 선택이 `/map?category=`로 이어짐 |
-| FR-HOME-002 | 부분 | 최근 본 장소는 구현, 로그인 기반 AI 개인화는 Sprint 3 |
+| FR-HOME-002 | 구현 | 최근 본 장소 + 로그인 시 조회·찜 이력 기반 개인화 추천 배너(`/api/home/personalized`) |
 | FR-HOME-003 | 구현 | 최근 7일 조회 이벤트 기반 인기 장소 |
 | FR-MAP-001 | 구현 | Kakao MarkerClusterer |
 | FR-MAP-002 | 구현 | TourAPI/DB 상세와 리뷰 평점 |
@@ -38,7 +38,7 @@
 | FR-STP-002 | 구현 | 획득 목록과 진행률 |
 | FR-STP-003 | 구현 | 임계치 배지 |
 | FR-STP-004 | 미구현 | 쿠폰/실물 보상 정책 필요 |
-| FR-STP-005 | 부분 | 전체 도감은 구현, 역사/음식/자연 테마 묶음은 Sprint 3 |
+| FR-STP-005 | 구현 | 전체 도감 + 역사/미식/자연 테마 코스 진행률·필터(`src/shared/stamp-themes.ts`) |
 
 ## 배포 전 필수 작업
 
