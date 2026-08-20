@@ -116,10 +116,158 @@ for (const keyword of mustHaveKeywords) {
 }
 
 const unique = [...new Map(all.map(row => [row.content_id, row])).values()];
+
+// The list endpoints omit `overview`, so detailCommon2 is the only source for the
+// grounding text that AI narration and pre-generation depend on.
+const LANG_SERVICES = {
+  ko: 'KorService2',
+  en: 'EngService2',
+  ja: 'JpnService2',
+  zh: 'ChsService2'
+};
+const DETAIL_CONCURRENCY = 2;
+const RATE_LIMIT_RETRIES = 4;
+const RATE_LIMIT_ERROR = 'LIMITED_NUMBER_OF_SERVICE_REQUESTS_PER_SECOND_EXCEEDS_ERROR';
+
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+function detailUrl(service, contentId) {
+  const params = new URLSearchParams({
+    MobileOS: 'ETC',
+    MobileApp: 'DalBbam',
+    _type: 'json',
+    contentId,
+    numOfRows: '1',
+    pageNo: '1'
+  });
+  const key = process.env.TOUR_API_KEY.includes('%')
+    ? process.env.TOUR_API_KEY
+    : encodeURIComponent(process.env.TOUR_API_KEY);
+  return `https://apis.data.go.kr/B551011/${service}/detailCommon2?serviceKey=${key}&${params}`;
+}
+
+function stripHtml(value) {
+  return String(value ?? '')
+    .replace(/<br\s*\/?>/gi, ' ')
+    .replace(/<[^>]*>/g, '')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// TourAPI enforces a per-second request cap; back off instead of losing the row.
+async function fetchDetail(service, contentId) {
+  for (let attempt = 0; attempt <= RATE_LIMIT_RETRIES; attempt += 1) {
+    try {
+      const response = await fetch(detailUrl(service, contentId), { signal: AbortSignal.timeout(15000) });
+      if (!response.ok) return null;
+      const payload = await response.json();
+      const errMsg = payload?.OpenAPI_ServiceResponse?.cmmMsgHeader?.errMsg;
+      if (errMsg === RATE_LIMIT_ERROR) {
+        await sleep(500 * 2 ** attempt);
+        continue;
+      }
+      // Unregistered language services answer with OpenAPI_ServiceResponse instead.
+      const items = payload?.response?.body?.items;
+      if (!items) return null;
+      const item = items.item ?? [];
+      const row = Array.isArray(item) ? item[0] : item;
+      return row ?? null;
+    } catch {
+      await sleep(500 * 2 ** attempt);
+    }
+  }
+  return null;
+}
+
+async function mapWithConcurrency(items, limit, task) {
+  const results = new Array(items.length);
+  let cursor = 0;
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (cursor < items.length) {
+      const index = cursor;
+      cursor += 1;
+      results[index] = await task(items[index], index);
+    }
+  }));
+  return results;
+}
+
+const unregisteredServices = new Set();
+
+async function fetchTranslations(contentId) {
+  const entries = {};
+  for (const [lang, service] of Object.entries(LANG_SERVICES)) {
+    if (lang === 'ko' || unregisteredServices.has(service)) continue;
+    const row = await fetchDetail(service, contentId);
+    if (!row?.title) {
+      // A language service that never answers is not enabled for this key; stop asking.
+      unregisteredServices.add(service);
+      continue;
+    }
+    entries[lang] = {
+      name: String(row.title),
+      overview: stripHtml(row.overview),
+      description: stripHtml(row.overview).slice(0, 400)
+    };
+  }
+  return entries;
+}
+
+const detailResults = await mapWithConcurrency(unique, DETAIL_CONCURRENCY, async row => {
+  const korean = await fetchDetail(LANG_SERVICES.ko, row.content_id);
+  if (korean) {
+    row.overview = stripHtml(korean.overview) || null;
+    row.description = row.overview ? row.overview.slice(0, 400) : null;
+    row.phone = korean.tel ? String(korean.tel) : row.phone ?? null;
+    row.homepage_url = stripHtml(korean.homepage) || row.homepage_url || null;
+  }
+  return { contentId: row.content_id, translations: await fetchTranslations(row.content_id) };
+});
+
 for (let index = 0; index < unique.length; index += 100) {
   const batch = unique.slice(index, index + 100);
   const { error } = await supabase.from('places').upsert(batch, { onConflict: 'content_id' });
   if (error) throw error;
 }
 
-process.stdout.write(`Synced ${unique.length} Gyeongju places.\n`);
+// place_translations references places(id), so ids are only known after the upsert.
+const { data: storedPlaces, error: storedError } = await supabase
+  .from('places')
+  .select('id, content_id');
+if (storedError) throw storedError;
+const placeIdByContentId = new Map((storedPlaces ?? []).map(place => [String(place.content_id), place.id]));
+
+const translationRows = [];
+for (const result of detailResults) {
+  const placeId = placeIdByContentId.get(String(result.contentId));
+  if (!placeId) continue;
+  for (const [lang, value] of Object.entries(result.translations)) {
+    translationRows.push({
+      place_id: placeId,
+      lang,
+      name: value.name,
+      description: value.description || null,
+      overview: value.overview || null,
+      updated_at: new Date().toISOString()
+    });
+  }
+}
+
+for (let index = 0; index < translationRows.length; index += 100) {
+  const batch = translationRows.slice(index, index + 100);
+  const { error } = await supabase
+    .from('place_translations')
+    .upsert(batch, { onConflict: 'place_id,lang' });
+  if (error) throw error;
+}
+
+const withOverview = unique.filter(row => row.overview).length;
+process.stdout.write(`Synced ${unique.length} Gyeongju places (${withOverview} with overview).\n`);
+process.stdout.write(`Stored ${translationRows.length} translations.\n`);
+if (unregisteredServices.size > 0) {
+  process.stdout.write(
+    `Skipped language services (not enabled for this TOUR_API_KEY): ${[...unregisteredServices].join(', ')}\n`
+  );
+}

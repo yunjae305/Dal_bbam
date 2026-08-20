@@ -38,6 +38,7 @@ const ko = {
     themes: '테마 코스 추천',
     personalized: '{name}님을 위한 추천',
     personalizedHint: '최근 본 장소와 찜 목록을 반영했어요',
+    recentPlace: '최근 본 장소 다시 보기',
     shorts: '쇼츠',
     community: '커뮤니티',
     stamps: '스탬프 투어'
@@ -125,6 +126,7 @@ export const messages: Record<Lang, MessagesShape> = {
       themes: 'Themed routes',
       personalized: 'Picks for {name}',
       personalizedHint: 'Based on places you viewed and saved',
+      recentPlace: 'Pick up where you left off',
       shorts: 'Shorts',
       community: 'Community',
       stamps: 'Stamp tour'
@@ -198,6 +200,7 @@ export const messages: Record<Lang, MessagesShape> = {
       themes: 'テーマコース',
       personalized: '{name}さんへのおすすめ',
       personalizedHint: '最近見た場所と保存リストを反映しました',
+      recentPlace: '最近見た場所をもう一度',
       shorts: 'ショート',
       community: 'コミュニティ',
       stamps: 'スタンプツアー'
@@ -271,6 +274,7 @@ export const messages: Record<Lang, MessagesShape> = {
       themes: '主题路线',
       personalized: '为{name}推荐',
       personalizedHint: '基于你最近浏览和收藏的地点',
+      recentPlace: '再看看最近浏览的地点',
       shorts: '短视频',
       community: '社区',
       stamps: '印章之旅'

@@ -201,9 +201,9 @@ function HomeScreen({
         <div className="relative z-10">
           <PhoneStatus dark />
           <div className="px-6 pt-8">
-            <p className="text-[11px] font-bold text-white/85">경주, 신라와 달밤</p>
+            <p className="text-[11px] font-bold text-white/85">{messages.home.eyebrow}</p>
             <h1 className="mt-1 max-w-[190px] text-balance text-[18px] font-black leading-[1.25]">
-              특별한 하루를<br />시작해볼까요?🌙
+              {messages.home.headline}🌙
             </h1>
           </div>
         </div>
@@ -279,7 +279,7 @@ function HomeScreen({
           <button type="button" onClick={() => { window.location.href = `/places/${encodeURIComponent(recentPlace.contentId)}`; }} className="mx-1 mt-5 flex w-[calc(100%-8px)] items-center gap-3 rounded-xl bg-[#223c72] p-3 text-left text-white">
             <img src={recentPlace.image} alt={recentPlace.name} className="h-12 w-14 rounded-lg object-cover" />
             <span className="min-w-0">
-              <span className="block text-[9px] font-black text-white/60">최근 본 장소 다시 보기</span>
+              <span className="block text-[9px] font-black text-white/60">{messages.home.recentPlace}</span>
               <strong className="mt-1 block truncate text-[12px]">{recentPlace.name}</strong>
             </span>
           </button>

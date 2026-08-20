@@ -18,6 +18,12 @@ type PlaceRow = {
   ai_description_zh: string | null;
   ai_description_ja: string | null;
   created_at?: string | null;
+  place_translations?: Array<{
+    lang: string;
+    name: string | null;
+    description: string | null;
+    overview: string | null;
+  }> | null;
 };
 
 const DEFAULT_IMAGE = '/login-spring-bg.png';
@@ -40,15 +46,28 @@ export function normalizePlaceCategory(category: string | null): PlaceCategory {
   return category ? legacyCategories[category] ?? 'attraction' : 'attraction';
 }
 
+function translationFor(row: PlaceRow, lang: Lang) {
+  return row.place_translations?.find(item => item.lang === lang);
+}
+
 function descriptionForLang(row: PlaceRow, lang: Lang): string {
-  if (lang === 'en') return row.ai_description_en || row.description || '';
-  if (lang === 'ja') return row.ai_description_ja || row.description || '';
-  if (lang === 'zh') return row.ai_description_zh || row.description || '';
-  return row.ai_description_ko || row.description || '';
+  const translated = translationFor(row, lang);
+  const aiDescription = lang === 'en'
+    ? row.ai_description_en
+    : lang === 'ja'
+      ? row.ai_description_ja
+      : lang === 'zh'
+        ? row.ai_description_zh
+        : row.ai_description_ko;
+  return translated?.description || translated?.overview || aiDescription || row.description || '';
+}
+
+function nameForLang(row: PlaceRow, lang: Lang): string {
+  return translationFor(row, lang)?.name || row.name || '경주 관광지';
 }
 
 function mapPlaceRow(row: PlaceRow, lang: Lang): Place {
-  const name = row.name || '경주 관광지';
+  const name = nameForLang(row, lang);
   const description = descriptionForLang(row, lang) || '경주 관광 정보입니다.';
   const category = normalizePlaceCategory(row.category);
 
@@ -70,18 +89,9 @@ function mapPlaceRow(row: PlaceRow, lang: Lang): Place {
     ],
     source: 'database',
     translations: {
-      en: {
-        name,
-        description: row.ai_description_en || row.description || description
-      },
-      ja: {
-        name,
-        description: row.ai_description_ja || row.description || description
-      },
-      zh: {
-        name,
-        description: row.ai_description_zh || row.description || description
-      }
+      en: { name: nameForLang(row, 'en'), description: descriptionForLang(row, 'en') || description },
+      ja: { name: nameForLang(row, 'ja'), description: descriptionForLang(row, 'ja') || description },
+      zh: { name: nameForLang(row, 'zh'), description: descriptionForLang(row, 'zh') || description }
     }
   };
 }
@@ -96,7 +106,7 @@ export async function getSupabasePlaces(lang: Lang = 'ko'): Promise<Place[]> {
 
   const { data, error } = await supabase
     .from('places')
-    .select('id, content_id, category, name, description, address, lat, lng, image_url, tags, ai_description_ko, ai_description_en, ai_description_zh, ai_description_ja, created_at')
+    .select('id, content_id, category, name, description, address, lat, lng, image_url, tags, ai_description_ko, ai_description_en, ai_description_zh, ai_description_ja, created_at, place_translations(lang, name, description, overview)')
     .order('created_at', { ascending: false })
     .limit(100);
 
