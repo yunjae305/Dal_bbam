@@ -59,36 +59,49 @@ function providerField(row: Record<string, unknown>, key: string): string {
 
 async function getGrounding(contentId: string, lang: Lang): Promise<Grounding | null> {
   const db = createSupabaseAdminClient();
+  let placeId: string | undefined;
+  let name = '';
+  let overview = '';
+
   if (db) {
     const { data } = await db
       .from('places')
-      .select('id, content_id, name, overview, description')
+      .select('id, content_id, name, overview, description, place_translations(lang, name, overview, description)')
       .eq('content_id', contentId)
       .maybeSingle();
     if (data) {
-      return {
-        placeId: String(data.id),
-        contentId: String(data.content_id),
-        name: String(data.name || '경주 관광지'),
-        overview: String(data.overview || data.description || '')
-      };
+      placeId = String(data.id);
+      // Ground non-Korean narration in the translated source text when it exists.
+      const translations = (data.place_translations ?? []) as Array<{
+        lang: string;
+        name: string | null;
+        overview: string | null;
+        description: string | null;
+      }>;
+      const translation = translations.find(item => item.lang === lang);
+      name = String(translation?.name || data.name || '');
+      overview = String(
+        translation?.overview || translation?.description || data.overview || data.description || ''
+      );
     }
   }
 
-  if (/^\d+$/.test(contentId)) {
+  // Rows synced without an overview still need grounding text, so fall through to TourAPI.
+  if (!overview.trim() && /^\d+$/.test(contentId)) {
     try {
       const detail = await getTourPlaceDetail(contentId);
       const row = detail.items[0] as Record<string, unknown> | undefined;
       if (row) {
-        return {
-          contentId,
-          name: providerField(row, 'title') || '경주 관광지',
-          overview: stripProviderHtml(providerField(row, 'overview'))
-        };
+        name = name || providerField(row, 'title');
+        overview = stripProviderHtml(providerField(row, 'overview'));
       }
     } catch {
       // Sample fallback below.
     }
+  }
+
+  if (overview.trim()) {
+    return { placeId, contentId, name: name || '경주 관광지', overview };
   }
 
   const place = (await getTourMvpData(lang)).places.find(item =>

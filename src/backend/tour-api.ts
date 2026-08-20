@@ -379,13 +379,6 @@ export function getGyeongjuTourPlaces(params: {
 export function getTourPlaceDetail(contentId: string) {
   return requestTourApi<TourPlaceDetail>('detailCommon2', {
     contentId: numericId(contentId, 'contentId'),
-    defaultYN: 'Y',
-    firstImageYN: 'Y',
-    areacodeYN: 'Y',
-    catcodeYN: 'Y',
-    addrinfoYN: 'Y',
-    mapinfoYN: 'Y',
-    overviewYN: 'Y',
     numOfRows: '1',
     pageNo: '1'
   });
@@ -408,7 +401,6 @@ export function getTourPlaceImages(params: {
   return requestTourApi<TourImage>('detailImage2', {
     contentId: numericId(params.contentId, 'contentId'),
     imageYN: 'Y',
-    subImageYN: 'Y',
     pageNo: positiveInteger(params.pageNo, 1, MAX_PAGE_NO, 'pageNo'),
     numOfRows: positiveInteger(params.numOfRows, 20, MAX_NUM_OF_ROWS, 'numOfRows')
   });
