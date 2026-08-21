@@ -13,7 +13,7 @@ export function GET() {
       tourApi: Boolean(process.env.TOUR_API_KEY),
       kakaoMap: Boolean(process.env.NEXT_PUBLIC_KAKAO_MAP_JS_KEY),
       kakaoMobility: Boolean(process.env.KAKAO_REST_API_KEY),
-      ai: Boolean(process.env.OPENAI_API_KEY),
+      ai: Boolean(process.env.OPENAI_API_KEY?.trim()),
       sessionSecret: Boolean((process.env.JWT_SECRET ?? process.env.SESSION_SECRET)?.length && (process.env.JWT_SECRET ?? process.env.SESSION_SECRET)!.length >= 32)
     }
   });

@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server';
+import { getCurrentUser } from '@/backend/auth/current-user';
 import { communitySelect, mapCommunityPost } from '@/backend/community';
 import {
   apiData,
@@ -8,9 +9,37 @@ import {
   parseBody
 } from '@/backend/http';
 import { moderateContent } from '@/backend/openai';
+import { createSupabaseAdminClient } from '@/backend/supabase/admin';
 
 type RouteContext = { params: Promise<{ id: string }> };
-type PatchBody = { title?: string; content?: string; rating?: number };
+const categories = ['review', 'tip', 'food', 'lodging'] as const;
+type CommunityCategory = (typeof categories)[number];
+type PatchBody = {
+  category?: CommunityCategory;
+  title?: string;
+  content?: string;
+  rating?: number | null;
+};
+
+export async function GET(_request: NextRequest, { params }: RouteContext) {
+  const db = createSupabaseAdminClient();
+  if (!db) return apiError('DATABASE_UNAVAILABLE', '데이터베이스가 설정되지 않았습니다.', 503);
+  const user = await getCurrentUser();
+  const { id } = await params;
+
+  const { data, error } = await db
+    .from('community_posts')
+    .select(communitySelect)
+    .eq('id', id)
+    .eq('status', 'published')
+    .maybeSingle();
+
+  if (error) return apiError('POST_READ_FAILED', error.message, 500);
+  if (!data) return apiError('POST_NOT_FOUND', '게시물을 찾을 수 없습니다.', 404);
+  return apiData(mapCommunityPost(data as never, user?.actorKey), {
+    headers: { 'Cache-Control': user ? 'private, no-store' : 'public, s-maxage=60' }
+  });
+}
 
 export async function PATCH(request: NextRequest, { params }: RouteContext) {
   const context = await getUserDataContext(request);
@@ -21,15 +50,20 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
 
   const { data: owned } = await context.db
     .from('community_posts')
-    .select('title, content, rating')
+    .select('category, title, content, rating')
     .eq('id', id)
     .eq('actor_key', context.user.actorKey)
     .maybeSingle();
   if (!owned) return apiError('POST_NOT_FOUND', '본인 게시물을 찾을 수 없습니다.', 404);
 
+  const category = body.category ?? owned.category as CommunityCategory;
+  if (!categories.includes(category)) {
+    return apiError('INVALID_CATEGORY', '올바른 카테고리가 필요합니다.');
+  }
   const title = body.title?.trim() || String(owned.title);
   const content = body.content?.trim() || String(owned.content);
-  const rating = body.rating ?? owned.rating;
+  const ratingSupplied = Object.prototype.hasOwnProperty.call(body, 'rating');
+  const rating = category === 'tip' ? null : ratingSupplied ? body.rating : owned.rating;
   if (rating !== null && (!Number.isInteger(rating) || rating < 1 || rating > 5)) {
     return apiError('INVALID_RATING', '별점은 1~5 사이여야 합니다.');
   }
@@ -47,6 +81,7 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
   const { data, error } = await context.db
     .from('community_posts')
     .update({
+      category,
       title: title.slice(0, 120),
       content: content.slice(0, 5000),
       rating,
