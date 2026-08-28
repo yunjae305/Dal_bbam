@@ -9,7 +9,7 @@ for (const name of required) {
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SECRET_KEY,
-  { auth: { persistSession: false, autoRefreshToken: false } }
+  { auth: { persistSession: false, autoRefreshToken: false }, realtime: { transport: class { constructor() { throw new Error('no realtime'); } } } }
 );
 
 // Each stop lists name patterns in preference order; the first synced place
