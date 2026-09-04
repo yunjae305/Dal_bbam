@@ -1,0 +1,44 @@
+{
+  "packageId": "__PACKAGE_ID__",
+  "host": "__HOST__",
+  "name": "__NAME__",
+  "launcherName": "__LAUNCHER_NAME__",
+  "display": "standalone",
+  "themeColor": "#12372f",
+  "themeColorDark": "#12372f",
+  "navigationColor": "#12372f",
+  "navigationColorDark": "#12372f",
+  "navigationDividerColor": "#12372f",
+  "navigationDividerColorDark": "#12372f",
+  "backgroundColor": "#eef3ee",
+  "enableNotifications": false,
+  "startUrl": "/",
+  "iconUrl": "__ICON_URL__",
+  "maskableIconUrl": "__MASKABLE_ICON_URL__",
+  "splashScreenFadeOutDuration": 300,
+  "signingKey": {
+    "path": "__KEYSTORE_PATH__",
+    "alias": "__KEY_ALIAS__"
+  },
+  "appVersion": "__APP_VERSION__",
+  "appVersionCode": 1,
+  "shortcuts": [],
+  "generatorApp": "dal-bbam-android-apk",
+  "fallbackType": "customtabs",
+  "features": {
+    "locationDelegation": {
+      "enabled": true
+    }
+  },
+  "alphaDependencies": {
+    "enabled": false
+  },
+  "enableSiteSettingsShortcut": true,
+  "isChromeOSOnly": false,
+  "isMetaQuest": false,
+  "minSdkVersion": 21,
+  "orientation": "portrait",
+  "fingerprints": [],
+  "additionalTrustedOrigins": [],
+  "retainedBundles": []
+}

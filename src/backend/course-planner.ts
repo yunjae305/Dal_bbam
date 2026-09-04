@@ -1,5 +1,5 @@
 import { distanceMeters } from '@/backend/geo';
-import { generateStructured } from '@/backend/openai';
+import { generateStructured, isOpenAiAvailable } from '@/backend/openai';
 import type {
   CoursePlan,
   CourseRequest,
@@ -190,6 +190,7 @@ export async function createCoursePlan(
   candidates: PlaceSummary[],
   actorKey: string
 ): Promise<CoursePlan> {
+  if (!isOpenAiAvailable()) return deterministicCoursePlan(request, candidates);
   try {
     const result = await generateStructured<AiCourse>({
       name: 'tour_course',

@@ -58,7 +58,21 @@ type CacheEntry<T> = {
 const tourApiCache = new Map<string, CacheEntry<unknown>>();
 const pendingRequests = new Map<string, Promise<TourApiResult<unknown>>>();
 
+type TourApiRequestOptions = {
+  /** Skip the in-memory cache and the shared in-flight request (used by readiness probes). */
+  bypassCache?: boolean;
+};
+
 type TourApiEnvelope<T> = {
+  // data.go.kr wraps gateway-level failures (unregistered key, quota exceeded,
+  // service not registered) in this envelope with HTTP 200.
+  OpenAPI_ServiceResponse?: {
+    cmmMsgHeader?: {
+      errMsg?: string;
+      returnAuthMsg?: string;
+      returnReasonCode?: string;
+    };
+  };
   response?: {
     header?: {
       resultCode?: string;
@@ -137,7 +151,8 @@ function coordinate(value: string, field: 'mapX' | 'mapY'): string {
     throw new TourApiError(`${field} is not a valid coordinate.`, 400);
   }
 
-  return String(parsed);
+  // ~11 m precision: keeps the request/cache key stable while the user drifts.
+  return String(Math.round(parsed * 10000) / 10000);
 }
 
 function yyyymmdd(value: string | undefined, field: string): string | undefined {
@@ -203,8 +218,17 @@ function normalizeItems<T>(item: T | T[] | undefined): T[] {
   return Array.isArray(item) ? item : [item];
 }
 
-async function requestTourApi<T>(path: string, params: Record<string, string | number | undefined>): Promise<TourApiResult<T>> {
+async function requestTourApi<T>(
+  path: string,
+  params: Record<string, string | number | undefined>,
+  options: TourApiRequestOptions = {}
+): Promise<TourApiResult<T>> {
   const cacheKey = buildCacheKey(path, params);
+
+  if (options.bypassCache) {
+    return fetchAndCacheTourApi<T>(path, params, cacheKey);
+  }
+
   const cached = tourApiCache.get(cacheKey) as CacheEntry<T> | undefined;
 
   if (cached && cached.expiresAt > Date.now()) {
@@ -283,13 +307,27 @@ async function fetchAndCacheTourApi<T>(
     throw new TourApiError('TourAPI returned an invalid JSON response.');
   }
 
-  const header = data.response?.header;
+  if (!data.response) {
+    // Gateway error envelope (or an unknown shape): never treat it as an empty
+    // success, and never cache it.
+    const gateway = data.OpenAPI_ServiceResponse?.cmmMsgHeader;
+    const reason = [gateway?.errMsg, gateway?.returnAuthMsg, gateway?.returnReasonCode]
+      .filter(Boolean)
+      .join(' ');
+    const rateLimited = /LIMITED_NUMBER_OF_SERVICE_REQUESTS/i.test(reason);
+    throw new TourApiError(
+      gateway?.errMsg?.trim() || 'TourAPI returned an unexpected response.',
+      rateLimited ? 429 : 502
+    );
+  }
+
+  const header = data.response.header;
 
   if (header?.resultCode && header.resultCode !== '0000') {
     throw new TourApiError(header.resultMsg ?? 'TourAPI returned an error.');
   }
 
-  const body = data.response?.body;
+  const body = data.response.body;
   const cachedAt = new Date().toISOString();
   const value = {
     items: normalizeItems(body?.items?.item),
@@ -364,7 +402,7 @@ export function getGyeongjuTourPlaces(params: {
   pageNo?: string;
   numOfRows?: string;
   contentTypeId?: string;
-}) {
+}, options?: TourApiRequestOptions) {
   return requestTourApi<TourPlaceSummary>('locationBasedList2', {
     mapX: GYEONGJU_MAP_X,
     mapY: GYEONGJU_MAP_Y,
@@ -373,7 +411,7 @@ export function getGyeongjuTourPlaces(params: {
     arrange: 'E',
     pageNo: positiveInteger(params.pageNo, 1, MAX_PAGE_NO, 'pageNo'),
     numOfRows: positiveInteger(params.numOfRows, 20, MAX_NUM_OF_ROWS, 'numOfRows')
-  });
+  }, options);
 }
 
 export function getTourPlaceDetail(contentId: string) {

@@ -22,10 +22,20 @@ export async function GET(request: NextRequest) {
     return response;
   } catch (error) {
     console.error('[kakao-login] configuration error', getErrorMessage(error));
-    const loginUrl = new URL('/login', getFrontendUrl(request.nextUrl.origin));
+    const loginUrl = new URL('/login', resolveLoginBase(request));
     loginUrl.searchParams.set('error', 'kakao_not_configured');
 
     return NextResponse.redirect(loginUrl);
+  }
+}
+
+/** getFrontendUrl throws on a malformed FRONTEND_URL; never let that mask the original error. */
+function resolveLoginBase(request: NextRequest): URL {
+  try {
+    return getFrontendUrl(request.nextUrl.origin);
+  } catch (error) {
+    console.error('[kakao-login] FRONTEND_URL invalid, falling back to request origin', getErrorMessage(error));
+    return new URL('/login', request.nextUrl.origin);
   }
 }
 

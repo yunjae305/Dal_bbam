@@ -8,15 +8,32 @@ import {
   parseBody
 } from '@/backend/http';
 import { createSupabaseAdminClient } from '@/backend/supabase/admin';
+import { mapFallbackShort, mapShortRow, shortRowSelect } from '@/backend/shorts';
+import { validUuid } from '@/backend/stamps';
 import { getTourMvpData } from '@/backend/tour-mvp-data';
 import { isLang } from '@/shared/i18n';
-import type { ShortItem } from '@/shared/types';
+import type { Lang } from '@/shared/types';
 
 type ReactionBody = {
   shortId?: string;
   action?: 'like' | 'save';
   value?: boolean;
 };
+
+type Database = NonNullable<ReturnType<typeof createSupabaseAdminClient>>;
+
+const POSTGRES_FOREIGN_KEY_VIOLATION = '23503';
+
+async function loadPublishedShorts(db: Database, lang: Lang) {
+  const { data } = await db
+    .from('shorts')
+    .select(shortRowSelect)
+    .eq('lang', lang)
+    .eq('is_published', true)
+    .order('created_at', { ascending: false })
+    .limit(50);
+  return data ?? [];
+}
 
 export async function GET(request: NextRequest) {
   const langParam = request.nextUrl.searchParams.get('lang');
@@ -26,66 +43,35 @@ export async function GET(request: NextRequest) {
   const user = await getCurrentUser();
 
   if (db) {
-    const { data } = await db
-      .from('shorts')
-      .select('id, title, summary, narration, image_url, audio_url, duration_seconds, tags, place_id, places(content_id), short_interactions(actor_key, liked, saved)')
-      .eq('lang', lang)
-      .eq('is_published', true)
-      .order('created_at', { ascending: false })
-      .limit(50);
+    let rows = await loadPublishedShorts(db, lang);
+    // A locale that has not been pre-generated yet should still show the real
+    // catalogue (Korean) rather than the sample clips.
+    if (!rows.length && lang !== 'ko') {
+      rows = await loadPublishedShorts(db, 'ko');
+    }
 
-    if (data?.length) {
-      const items: ShortItem[] = data.map(row => {
-        const interactions = (row.short_interactions as unknown as Array<{
-          actor_key: string;
-          liked: boolean;
-          saved: boolean;
-        }> | null) ?? [];
-        const mine = interactions.find(item => item.actor_key === user?.actorKey);
-        const place = row.places as unknown as { content_id?: string } | null;
-        return {
-          id: String(row.id),
-          contentId: place?.content_id ?? String(row.place_id),
-          title: String(row.title),
-          summary: String(row.summary),
-          narration: String(row.narration),
-          imageUrl: String(row.image_url || '/login-spring-bg.png'),
-          audioUrl: row.audio_url ? String(row.audio_url) : undefined,
-          durationSeconds: Number(row.duration_seconds ?? 60),
-          tags: (row.tags as string[] | null) ?? [],
-          liked: Boolean(mine?.liked),
-          saved: Boolean(mine?.saved),
-          likeCount: interactions.filter(item => item.liked).length,
-          isAiGenerated: true
-        };
-      }).filter(item => !tag || item.tags.some(itemTag => itemTag.toLowerCase() === tag));
+    if (rows.length) {
+      const items = rows
+        .map(row => mapShortRow(row as unknown as Record<string, unknown>, user?.actorKey))
+        .filter(item => !tag || item.tags.some(itemTag => itemTag.toLowerCase() === tag));
 
       return apiData(items, {
-        headers: { 'Cache-Control': user ? 'private, no-store' : 'public, s-maxage=120' }
+        headers: user
+          ? { 'Cache-Control': 'private, no-store' }
+          // Anonymous and signed-in responses share a URL; the cookie decides which one applies.
+          : { 'Cache-Control': 'public, s-maxage=120', Vary: 'Cookie' }
       });
     }
   }
 
   const fallback = await getTourMvpData(lang);
-  const items: ShortItem[] = fallback.shorts
+  const items = fallback.shorts
     .filter(clip => !tag || clip.tags.some(itemTag => itemTag.toLowerCase() === tag))
-    .map(clip => ({
-      id: clip.id,
-      contentId: clip.placeId,
-      title: clip.title,
-      summary: clip.caption,
-      narration: clip.caption,
-      imageUrl: clip.image,
-      durationSeconds: Number(clip.duration.split(':')[0]) * 60 + Number(clip.duration.split(':')[1]),
-      tags: clip.tags,
-      liked: false,
-      saved: false,
-      likeCount: 0,
-      isAiGenerated: false
-    }));
+    .map(mapFallbackShort);
   return apiData(items, {
-    meta: { fallback: true },
-    headers: { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300' }
+    // Sample clips have no database row, so like/save cannot be persisted.
+    meta: { fallback: true, reactionsEnabled: false },
+    headers: { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300', Vary: 'Cookie' }
   });
 }
 
@@ -95,6 +81,9 @@ export async function POST(request: NextRequest) {
   const body = await parseBody<ReactionBody>(request);
   if (!body?.shortId || !body.action || typeof body.value !== 'boolean') {
     return apiError('INVALID_REACTION', 'shortId, action, value가 필요합니다.');
+  }
+  if (!validUuid(body.shortId)) {
+    return apiError('INVALID_SHORT', '올바른 쇼츠 ID가 아닙니다.');
   }
 
   const { data: existing } = await context.db
@@ -118,6 +107,11 @@ export async function POST(request: NextRequest) {
     .select('liked, saved')
     .single();
 
-  if (error) return apiError('REACTION_SAVE_FAILED', error.message, 500);
+  if (error) {
+    if (error.code === POSTGRES_FOREIGN_KEY_VIOLATION) {
+      return apiError('SHORT_NOT_FOUND', '쇼츠를 찾을 수 없습니다.', 404);
+    }
+    return apiError('REACTION_SAVE_FAILED', error.message, 500);
+  }
   return apiData(data, { headers: { 'Cache-Control': 'private, no-store' } });
 }

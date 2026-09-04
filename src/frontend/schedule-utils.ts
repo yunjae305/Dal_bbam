@@ -30,3 +30,10 @@ export function dateRange(startDate: string, endDate: string, maxDays = 31): str
   }
   return days;
 }
+
+/** YYYY-MM-DD in the device's local time zone (toISOString would give UTC). */
+export function todayLocalDate(now = new Date()): string {
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${now.getFullYear()}-${month}-${day}`;
+}

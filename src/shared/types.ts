@@ -92,6 +92,8 @@ export type ShortItem = {
   likeCount: number;
   isAiGenerated: boolean;
   audioUrl?: string;
+  videoUrl?: string;
+  youtubeVideoId?: string;
 };
 
 export type CourseRequest = {
@@ -143,6 +145,8 @@ export type ShortClip = {
   duration: string;
   image: string;
   tags: string[];
+  videoUrl?: string;
+  youtubeVideoId?: string;
 };
 
 export type ScheduleItem = {
@@ -199,6 +203,15 @@ export type CommunityPost = {
   authorName: string;
   isOwner?: boolean;
   bookmarked: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type CommunityComment = {
+  id: string;
+  authorName: string;
+  content: string;
+  isOwner: boolean;
   createdAt: string;
   updatedAt: string;
 };

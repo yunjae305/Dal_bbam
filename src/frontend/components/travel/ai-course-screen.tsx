@@ -1,7 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Bookmark, Check, LoaderCircle, Map as MapIcon, Share2, Sparkles } from 'lucide-react';
 import type {
   CoursePlan,
@@ -11,6 +12,7 @@ import type {
 } from '@/shared/types';
 import { PhoneStatus, HeaderBar } from '@/frontend/components/common/ui';
 import { useLocale } from '@/frontend/i18n/locale-context';
+import { uiMessages } from '@/shared/ui-messages';
 
 type Props = { places: Place[] };
 
@@ -20,6 +22,8 @@ type CuratedCourse = {
   description: string | null;
   transport: string;
   is_curated: boolean;
+  is_ai_generated?: boolean;
+  share_token?: string | null;
   course_places: Array<{
     order_index: number;
     reason: string | null;
@@ -32,21 +36,18 @@ type CuratedCourse = {
   }> | null;
 };
 
-const transportLabels: Record<string, string> = {
-  walking: '도보',
-  car: '자동차',
-  public: '대중교통'
-};
-
 const categories: PlaceCategory[] = ['heritage', 'attraction', 'food', 'nature', 'experience', 'festival'];
 
 export function AiCourseScreen({ places }: Props) {
   const { locale, messages } = useLocale();
+  const searchParams = useSearchParams();
+  const ui = uiMessages[locale].course;
+  const requestedInterest = searchParams.get('interest');
   const [request, setRequest] = useState<CourseRequest>({
     purpose: '',
     days: 1,
     companion: 'solo',
-    interests: ['heritage'],
+    interests: [categories.includes(requestedInterest as PlaceCategory) ? requestedInterest as PlaceCategory : 'heritage'],
     pace: 'balanced',
     transport: 'walking',
     lang: locale
@@ -57,21 +58,30 @@ export function AiCourseScreen({ places }: Props) {
   const [saved, setSaved] = useState(false);
   const [shareToken, setShareToken] = useState('');
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [curated, setCurated] = useState<CuratedCourse[]>([]);
+  const [myCourses, setMyCourses] = useState<CuratedCourse[]>([]);
 
   const byId = useMemo(() => new Map(places.map(place => [place.contentId, place])), [places]);
 
+  const loadCourses = useCallback(async (signal?: AbortSignal) => {
+    try {
+      const response = await fetch('/api/courses', { signal, cache: 'no-store' });
+      if (!response.ok) return;
+      const payload = await response.json() as { data?: CuratedCourse[] };
+      const courses = payload.data ?? [];
+      setCurated(courses.filter(course => course.is_curated));
+      setMyCourses(courses.filter(course => !course.is_curated));
+    } catch {
+      // The recommendation form still works without the course lists.
+    }
+  }, []);
+
   useEffect(() => {
     const controller = new AbortController();
-    fetch('/api/courses', { signal: controller.signal, cache: 'no-store' })
-      .then(async response => {
-        if (!response.ok) return;
-        const payload = await response.json() as { data?: CuratedCourse[] };
-        setCurated((payload.data ?? []).filter(course => course.is_curated));
-      })
-      .catch(() => undefined);
+    void loadCourses(controller.signal);
     return () => controller.abort();
-  }, []);
+  }, [loadCourses]);
 
   function toggleInterest(category: PlaceCategory) {
     setRequest(current => ({
@@ -85,7 +95,9 @@ export function AiCourseScreen({ places }: Props) {
   async function recommend() {
     setLoading(true);
     setError('');
+    setNotice('');
     setSaved(false);
+    setShareToken('');
     try {
       const response = await fetch('/api/courses/recommend', {
         method: 'POST',
@@ -93,10 +105,10 @@ export function AiCourseScreen({ places }: Props) {
         body: JSON.stringify({ ...request, lang: locale })
       });
       const payload = await response.json();
-      if (!response.ok) throw new Error(payload?.error?.message ?? '코스를 추천할 수 없습니다.');
+      if (!response.ok) throw new Error(payload?.error?.message ?? ui.loadRecommendFailed);
       setPlan(payload.data);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : '코스를 추천할 수 없습니다.');
+      setError(cause instanceof Error ? cause.message : ui.loadRecommendFailed);
     } finally {
       setLoading(false);
     }
@@ -121,77 +133,90 @@ export function AiCourseScreen({ places }: Props) {
         })
       });
       const payload = await response.json();
-      if (!response.ok) throw new Error(payload?.error?.message ?? '코스를 저장할 수 없습니다.');
+      if (!response.ok) throw new Error(payload?.error?.message ?? ui.saveFailed);
       setSaved(true);
       setShareToken(payload.data.share_token ?? '');
+      setNotice(ui.savedNotice);
+      void loadCourses();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : '코스를 저장할 수 없습니다.');
+      setError(cause instanceof Error ? cause.message : ui.saveFailed);
     } finally {
       setSaving(false);
     }
   }
 
-  async function sharePlan() {
-    if (!shareToken) return;
-    const url = `${window.location.origin}/courses/share/${shareToken}`;
-    if (navigator.share) await navigator.share({ title: plan?.title, text: plan?.summary, url });
-    else {
-      await navigator.clipboard.writeText(url);
-      setError('공유 링크를 복사했습니다.');
+  async function shareCourse(token: string, title?: string, text?: string | null) {
+    if (!token) return;
+    const url = `${window.location.origin}/courses/share/${token}`;
+    setError('');
+    try {
+      if (navigator.share) {
+        await navigator.share({ title, text: text ?? undefined, url });
+      } else {
+        await navigator.clipboard.writeText(url);
+        setNotice(ui.copied);
+      }
+    } catch (cause) {
+      if (cause instanceof DOMException && cause.name === 'AbortError') return;
+      setError(ui.shareFailed);
     }
+  }
+
+  function sharePlan() {
+    return shareCourse(shareToken, plan?.title, plan?.summary);
   }
 
   return (
     <section className="min-h-[calc(100dvh-40px)] bg-[#fbfaf8]">
       <PhoneStatus />
-      <HeaderBar title="AI 추천 코스" right={<Sparkles size={18} className="text-[#ff5b4f]" />} />
+      <HeaderBar title={ui.header} right={<Sparkles size={18} className="text-[#ff5b4f]" />} />
       <div className="px-5 pb-28">
-        <p className="mt-4 text-[11px] font-black text-[#8d95a1]">실제 관광지 데이터로</p>
-        <h1 className="mt-1 text-[22px] font-black leading-tight tracking-[-0.03em]">내 여행 조건에 맞는 코스를 만들어요</h1>
+        <p className="mt-4 text-[11px] font-black text-[#8d95a1]">{ui.eyebrow}</p>
+        <h1 className="mt-1 text-[22px] font-black leading-tight tracking-[-0.03em]">{ui.headline}</h1>
 
         <div className="mt-5 space-y-4 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-black/5">
           <label className="block text-[11px] font-black">
-            여행 목적
+            {ui.purpose}
             <input
               value={request.purpose}
               onChange={event => setRequest(current => ({ ...current, purpose: event.target.value }))}
               className="mt-2 h-10 w-full rounded-xl bg-[#f4f5f6] px-3 text-[12px] outline-none"
               maxLength={120}
-              placeholder="예: 부모님과 신라 역사 여행"
+              placeholder={ui.purposePlaceholder}
             />
           </label>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="기간">
+            <Field label={ui.duration}>
               <select value={request.days} onChange={event => setRequest(current => ({ ...current, days: Number(event.target.value) }))} className="h-10 w-full rounded-xl bg-[#f4f5f6] px-3 text-[11px]">
-                {[1, 2, 3, 4, 5, 6, 7].map(day => <option key={day} value={day}>{day}일</option>)}
+                {[1, 2, 3, 4, 5, 6, 7].map(day => <option key={day} value={day}>{ui.days.replace('{day}', String(day))}</option>)}
               </select>
             </Field>
-            <Field label="동행">
+            <Field label={ui.companion}>
               <select value={request.companion} onChange={event => setRequest(current => ({ ...current, companion: event.target.value as CourseRequest['companion'] }))} className="h-10 w-full rounded-xl bg-[#f4f5f6] px-3 text-[11px]">
-                <option value="solo">혼자</option>
-                <option value="couple">연인</option>
-                <option value="family">가족</option>
-                <option value="friends">친구</option>
-                <option value="group">단체</option>
+                <option value="solo">{ui.solo}</option>
+                <option value="couple">{ui.couple}</option>
+                <option value="family">{ui.family}</option>
+                <option value="friends">{ui.friends}</option>
+                <option value="group">{ui.group}</option>
               </select>
             </Field>
-            <Field label="여행 속도">
+            <Field label={ui.pace}>
               <select value={request.pace} onChange={event => setRequest(current => ({ ...current, pace: event.target.value as CourseRequest['pace'] }))} className="h-10 w-full rounded-xl bg-[#f4f5f6] px-3 text-[11px]">
-                <option value="relaxed">여유롭게</option>
-                <option value="balanced">균형 있게</option>
-                <option value="packed">알차게</option>
+                <option value="relaxed">{ui.relaxed}</option>
+                <option value="balanced">{ui.balanced}</option>
+                <option value="packed">{ui.packed}</option>
               </select>
             </Field>
-            <Field label="교통수단">
+            <Field label={ui.transport}>
               <select value={request.transport} onChange={event => setRequest(current => ({ ...current, transport: event.target.value as CourseRequest['transport'] }))} className="h-10 w-full rounded-xl bg-[#f4f5f6] px-3 text-[11px]">
-                <option value="walking">도보</option>
-                <option value="car">자동차</option>
-                <option value="public">대중교통</option>
+                <option value="walking">{ui.walking}</option>
+                <option value="car">{ui.car}</option>
+                <option value="public">{ui.public}</option>
               </select>
             </Field>
           </div>
           <div>
-            <p className="text-[11px] font-black">관심사</p>
+            <p className="text-[11px] font-black">{ui.interests}</p>
             <div className="mt-2 flex flex-wrap gap-2">
               {categories.map(category => {
                 const active = request.interests.includes(category);
@@ -210,23 +235,24 @@ export function AiCourseScreen({ places }: Props) {
         </div>
 
         {error && <p className="mt-4 rounded-xl bg-red-50 p-3 text-[11px] font-bold text-red-700" role="alert">{error}</p>}
+        {notice && <p className="mt-4 rounded-xl bg-[#e8f2ed] p-3 text-[11px] font-bold text-[#2f7567]" role="status">{notice}</p>}
 
         {plan && (
           <article className="mt-5 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-black/5">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <p className="text-[9px] font-black uppercase text-[#ff5b4f]">{plan.generatedBy === 'openai' ? 'AI plan' : 'Fallback plan'}</p>
+                <p className="text-[9px] font-black uppercase text-[#ff5b4f]">{plan.generatedBy === 'openai' ? ui.aiPlan : ui.fallbackPlan}</p>
                 <h2 className="mt-1 text-[18px] font-black">{plan.title}</h2>
                 <p className="mt-2 text-[11px] leading-5 text-[#727b87]">{plan.summary}</p>
               </div>
               <div className="flex shrink-0 gap-2">
-                {shareToken && <button type="button" onClick={sharePlan} className="grid h-9 w-9 place-items-center rounded-full bg-[#eef3ee] text-[#2f7567]" aria-label="코스 공유"><Share2 size={16} /></button>}
-                <button type="button" onClick={savePlan} disabled={saving || saved} className="grid h-9 w-9 place-items-center rounded-full bg-[#fff1ee] text-[#ff5b4f] disabled:opacity-60" aria-label="코스 저장">
+                {shareToken && <button type="button" onClick={sharePlan} className="grid h-9 w-9 place-items-center rounded-full bg-[#eef3ee] text-[#2f7567]" aria-label={ui.shareLabel}><Share2 size={16} /></button>}
+                <button type="button" onClick={savePlan} disabled={saving || saved} className="grid h-9 w-9 place-items-center rounded-full bg-[#fff1ee] text-[#ff5b4f] disabled:opacity-60" aria-label={ui.saveLabel}>
                   {saved ? <Check size={17} /> : <Bookmark size={17} />}
                 </button>
               </div>
             </div>
-            <p className="mt-3 text-[10px] font-bold text-[#69727e]">{(plan.totalDistanceMeters / 1000).toFixed(1)}km · 약 {Math.round(plan.estimatedMinutes / 60)}시간</p>
+            <p className="mt-3 text-[10px] font-bold text-[#69727e]">{ui.durationSummary.replace('{distance}', (plan.totalDistanceMeters / 1000).toFixed(1)).replace('{hours}', String(Math.round(plan.estimatedMinutes / 60)))}</p>
             <ol className="mt-4 space-y-3">
               {plan.stops.map((stop, index) => {
                 const place = stop.place ? {
@@ -236,10 +262,10 @@ export function AiCourseScreen({ places }: Props) {
                 return (
                   <li key={stop.contentId} className="grid grid-cols-[28px_54px_1fr] items-center gap-3">
                     <span className="grid h-7 w-7 place-items-center rounded-full bg-[#223c72] text-[10px] font-black text-white">{index + 1}</span>
-                    <img src={place?.image || '/login-spring-bg.png'} alt={place?.name || '추천 장소'} className="h-12 w-14 rounded-lg object-cover" />
+                    <img src={place?.image || '/login-spring-bg.png'} alt={place?.name || ui.recommendedPlace} className="h-12 w-14 rounded-lg object-cover" />
                     <div className="min-w-0">
                       <h3 className="truncate text-[12px] font-black">{place?.name || stop.contentId}</h3>
-                      <p className="mt-1 line-clamp-2 text-[9px] leading-4 text-[#7e8793]">{stop.reason} · {stop.stayMinutes}분</p>
+                      <p className="mt-1 line-clamp-2 text-[9px] leading-4 text-[#7e8793]">{stop.reason} · {ui.minutes.replace('{minutes}', String(stop.stayMinutes))}</p>
                     </div>
                   </li>
                 );
@@ -248,10 +274,42 @@ export function AiCourseScreen({ places }: Props) {
           </article>
         )}
 
+        {myCourses.length > 0 && (
+          <div className="mt-7">
+            <h2 className="text-[16px] font-black tracking-[-0.02em]">{ui.myCoursesTitle}</h2>
+            <p className="mt-1 text-[10px] font-bold text-[#8d95a1]">{ui.myCoursesDescription}</p>
+            <div className="mt-3 space-y-3">
+              {myCourses.map(course => {
+                const stops = [...(course.course_places ?? [])].sort((a, b) => a.order_index - b.order_index);
+                return (
+                  <article key={course.id} className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-black/5">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="inline-flex items-center gap-1 rounded-full bg-[#fff1ee] px-2 py-0.5 text-[9px] font-black text-[#ff5b4f]">
+                          <Sparkles size={10} /> {course.is_ai_generated ? ui.aiPlan : ui.fallbackPlan}
+                        </p>
+                        <h3 className="mt-2 truncate text-[15px] font-black">{course.title}</h3>
+                        <p className="mt-1 truncate text-[10px] text-[#727b87]">
+                          {stops.map(stop => stop.places?.name ?? ui.deletedPlace).join(' → ')}
+                        </p>
+                      </div>
+                      {course.share_token && (
+                        <button type="button" onClick={() => void shareCourse(course.share_token ?? '', course.title, course.description)} className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#eef3ee] text-[#2f7567]" aria-label={ui.shareLabel}>
+                          <Share2 size={16} />
+                        </button>
+                      )}
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {curated.length > 0 && (
           <div className="mt-7">
-            <h2 className="text-[16px] font-black tracking-[-0.02em]">큐레이션 추천 코스</h2>
-            <p className="mt-1 text-[10px] font-bold text-[#8d95a1]">테마별로 미리 준비된 검증된 코스예요.</p>
+            <h2 className="text-[16px] font-black tracking-[-0.02em]">{ui.curatedTitle}</h2>
+            <p className="mt-1 text-[10px] font-bold text-[#8d95a1]">{ui.curatedDescription}</p>
             <div className="mt-3 space-y-4">
               {curated.map(course => {
                 const stops = [...(course.course_places ?? [])].sort((a, b) => a.order_index - b.order_index);
@@ -260,7 +318,7 @@ export function AiCourseScreen({ places }: Props) {
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <p className="inline-flex items-center gap-1 rounded-full bg-[#eef3ee] px-2 py-0.5 text-[9px] font-black text-[#2f7567]">
-                          <MapIcon size={10} /> {transportLabels[course.transport] ?? course.transport} 코스
+                          <MapIcon size={10} /> {({ walking: ui.walking, car: ui.car, public: ui.public }[course.transport] ?? course.transport)} {ui.courseSuffix}
                         </p>
                         <h3 className="mt-2 text-[15px] font-black">{course.title}</h3>
                         {course.description && (
@@ -280,11 +338,11 @@ export function AiCourseScreen({ places }: Props) {
                               <img src={stop.places.image_url || '/login-spring-bg.png'} alt={stop.places.name} className="h-9 w-11 rounded-lg object-cover" />
                               <span className="min-w-0">
                                 <span className="block truncate text-[11px] font-black">{stop.places.name}</span>
-                                <span className="mt-0.5 block truncate text-[9px] text-[#7e8793]">{stop.reason} · {stop.stay_minutes}분</span>
+                                <span className="mt-0.5 block truncate text-[9px] text-[#7e8793]">{stop.reason} · {ui.minutes.replace('{minutes}', String(stop.stay_minutes))}</span>
                               </span>
                             </Link>
                           ) : (
-                            <span className="text-[10px] text-[#7e8793]">삭제된 장소</span>
+                            <span className="text-[10px] text-[#7e8793]">{ui.deletedPlace}</span>
                           )}
                         </li>
                       ))}

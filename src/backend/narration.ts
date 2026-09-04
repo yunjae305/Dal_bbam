@@ -4,12 +4,31 @@ import { createSupabaseAdminClient } from '@/backend/supabase/admin';
 import {
   contentHash,
   generateStructured,
+  isOpenAiAvailable,
   narrationCacheKey
 } from '@/backend/openai';
 import { stripProviderHtml } from '@/backend/place-mapper';
 import type { Lang, Narration } from '@/shared/types';
 
 export const NARRATION_PROMPT_VERSION = 'narration-v1';
+// After an OpenAI 401 every request would otherwise re-hit the provider just to
+// fall back again; remember the rejection for a while (module scope, per instance).
+const OPENAI_UNAUTHORIZED_BACKOFF_MS = 5 * 60 * 1000;
+let openAiUnauthorizedUntil = 0;
+
+function openAiAvailable(): boolean {
+  if (!isOpenAiAvailable()) return false;
+  return openAiUnauthorizedUntil <= Date.now();
+}
+
+function errorStatus(error: unknown): number | undefined {
+  if (error && typeof error === 'object' && 'status' in error) {
+    const status = Number((error as { status?: unknown }).status);
+    return Number.isFinite(status) ? status : undefined;
+  }
+  return undefined;
+}
+
 const languageNames: Record<Lang, string> = {
   ko: 'Korean',
   en: 'English',
@@ -189,6 +208,17 @@ export async function getOrCreateNarration(
     }
   }
 
+  if (!openAiAvailable()) {
+    console.info(JSON.stringify({
+      event: 'openai_fallback',
+      operation: 'tour_narration',
+      reason: process.env.OPENAI_API_KEY?.trim() ? 'unauthorized_backoff' : 'not_configured',
+      contentId,
+      lang
+    }));
+    return { narration: fallbackNarration(grounding, lang), fallback: true };
+  }
+
   try {
     const result = await generateStructured<AiNarration>({
       name: 'tour_narration',
@@ -241,10 +271,15 @@ export async function getOrCreateNarration(
       }
     }
     return { narration, fallback: false };
-  } catch {
+  } catch (error) {
+    const status = errorStatus(error);
+    if (status === 401) {
+      openAiUnauthorizedUntil = Date.now() + OPENAI_UNAUTHORIZED_BACKOFF_MS;
+    }
     console.info(JSON.stringify({
       event: 'openai_fallback',
       operation: 'tour_narration',
+      ...(status ? { status } : {}),
       contentId,
       lang
     }));

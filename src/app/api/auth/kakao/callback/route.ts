@@ -6,12 +6,12 @@ import {
   KAKAO_STATE_COOKIE
 } from '@/backend/auth/kakao';
 import {
-  createSessionToken,
   getAuthCookieOptions,
   SESSION_COOKIE,
   SESSION_COOKIE_MAX_AGE
 } from '@/backend/auth/session';
 import { findOrCreateSocialUser } from '@/backend/auth/social-users';
+import { createPersistedSession } from '@/backend/auth/persisted-session';
 import { NextRequest, NextResponse } from 'next/server';
 
 type LoginError =
@@ -68,12 +68,13 @@ export async function GET(request: NextRequest) {
     });
     const response = NextResponse.redirect(getFrontendUrl(request.nextUrl.origin));
 
-    response.cookies.set(SESSION_COOKIE, createSessionToken({
+    const token = await createPersistedSession({
       sub: user.id,
       email: user.email,
       name: user.name,
       provider: 'kakao'
-    }), {
+    });
+    response.cookies.set(SESSION_COOKIE, token, {
       ...getAuthCookieOptions(),
       maxAge: SESSION_COOKIE_MAX_AGE
     });
@@ -98,7 +99,14 @@ function statesMatch(actual: string | null, expected: string | undefined): boole
 }
 
 function errorResponse(request: NextRequest, error: LoginError): NextResponse {
-  const loginUrl = new URL('/login', getFrontendUrl(request.nextUrl.origin));
+  let loginUrl: URL;
+  try {
+    loginUrl = new URL('/login', getFrontendUrl(request.nextUrl.origin));
+  } catch (configError) {
+    // A malformed FRONTEND_URL must not turn a login failure into a 500.
+    console.error('[kakao-callback] FRONTEND_URL invalid, falling back to request origin', getErrorMessage(configError));
+    loginUrl = new URL('/login', request.nextUrl.origin);
+  }
   loginUrl.searchParams.set('error', error);
   const response = NextResponse.redirect(loginUrl);
 

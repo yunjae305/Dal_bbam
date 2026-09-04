@@ -1,4 +1,4 @@
-import type { Lang, PlaceCategory } from '@/shared/types';
+import { languages, type Lang, type PlaceCategory } from '@/shared/types';
 
 export const localeCookieName = 'dal_bbam_locale';
 export const localeCookieMaxAge = 60 * 60 * 24 * 365;
@@ -18,7 +18,12 @@ const ko = {
     loading: '불러오는 중…',
     signInRequired: '로그인이 필요합니다.',
     logout: '로그아웃',
-    empty: '아직 표시할 항목이 없습니다.'
+    empty: '아직 표시할 항목이 없습니다.',
+    clearSearch: '검색어 지우기',
+    languageSelect: '언어 선택',
+    mainMenu: '주요 메뉴',
+    copied: '링크를 복사했습니다.',
+    shareFailed: '공유하지 못했습니다.'
   },
   categories: {
     heritage: '문화유산',
@@ -41,7 +46,11 @@ const ko = {
     recentPlace: '최근 본 장소 다시 보기',
     shorts: '쇼츠',
     community: '커뮤니티',
-    stamps: '스탬프 투어'
+    stamps: '스탬프 투어',
+    allHint: '카테고리와 투어를 선택해 이동하세요.',
+    themeNight: '신라의 달밤 야경 산책 코스',
+    themeFood: '경주 맛집 탐방 코스',
+    themeHint: 'AI 추천에서 내 조건에 맞게 만들어 보세요'
   },
   stamps: {
     themes: '테마 코스',
@@ -59,7 +68,41 @@ const ko = {
     nearbyCount: '반경 3km 내 관광지 {count}곳을 찾았습니다.',
     directions: '길찾기',
     walkingEstimate: '도보 예상',
-    carRoute: '자동차 경로'
+    walkingRoute: '도보',
+    publicRoute: '대중교통',
+    bicycleRoute: '자전거',
+    carRoute: '자동차',
+    searchArea: '현 지도에서 검색',
+    kakaoSearch: '카카오 장소 검색',
+    kakaoSearching: '카카오 장소를 찾는 중…',
+    kakaoCount: '카카오 장소 {count}곳을 찾았습니다.',
+    kakaoSearchFailed: '카카오 장소를 불러오지 못했습니다.',
+    kakaoDetail: '카카오맵 상세',
+    locationRequired: '길찾기 전에 현재 위치를 확인해 주세요.',
+    unavailable: '지도를 불러오지 못했습니다.',
+    openApp: '카카오맵 앱',
+    openWeb: '웹으로',
+    origin: '출발',
+    destination: '도착',
+    swap: '출발·도착 바꾸기',
+    pickOrigin: '출발지 선택',
+    pickDestination: '도착지 선택',
+    pickHint: '지도를 탭하거나 목록·마커에서 장소를 선택하세요',
+    useCurrentLocation: '현재 위치 사용',
+    mapPoint: '지도에서 선택한 지점',
+    notSet: '선택 안 됨',
+    cancel: '취소',
+    routeComparing: '경로를 비교하는 중…',
+    routeCompareFailed: '경로를 불러오지 못했습니다.',
+    selectBoth: '출발지와 도착지를 모두 선택해 주세요.',
+    transfers: '환승 {count}회',
+    fare: '요금 {fare}원',
+    toll: '통행료 {fare}원',
+    durationHours: '{h}시간 {m}분',
+    durationMinutes: '{m}분',
+    estimateTag: '직선 예상',
+    routeSteps: '경로 안내',
+    noRoute: '경로 없음'
   },
   ai: {
     narration: 'AI 해설',
@@ -106,7 +149,12 @@ export const messages: Record<Lang, MessagesShape> = {
       loading: 'Loading…',
       signInRequired: 'Please sign in.',
       logout: 'Log out',
-      empty: 'Nothing to show yet.'
+      empty: 'Nothing to show yet.',
+      clearSearch: 'Clear search',
+      languageSelect: 'Language',
+      mainMenu: 'Main menu',
+      copied: 'Link copied.',
+      shareFailed: 'Could not share.'
     },
     categories: {
       heritage: 'Heritage',
@@ -129,7 +177,11 @@ export const messages: Record<Lang, MessagesShape> = {
       recentPlace: 'Pick up where you left off',
       shorts: 'Shorts',
       community: 'Community',
-      stamps: 'Stamp tour'
+      stamps: 'Stamp tour',
+      allHint: 'Pick a category or tour to jump to.',
+      themeNight: 'Silla moonlit night-walk course',
+      themeFood: 'Gyeongju food-trip course',
+      themeHint: 'Build one for your trip in AI recommendations'
     },
     stamps: {
       themes: 'Themed routes',
@@ -147,7 +199,41 @@ export const messages: Record<Lang, MessagesShape> = {
       nearbyCount: 'Found {count} places within 3 km.',
       directions: 'Directions',
       walkingEstimate: 'Walking estimate',
-      carRoute: 'Driving route'
+      walkingRoute: 'Walk',
+      publicRoute: 'Transit',
+      bicycleRoute: 'Bike',
+      carRoute: 'Car',
+      searchArea: 'Search this area',
+      kakaoSearch: 'Search Kakao places',
+      kakaoSearching: 'Searching Kakao places…',
+      kakaoCount: 'Found {count} Kakao places.',
+      kakaoSearchFailed: 'Could not load Kakao places.',
+      kakaoDetail: 'View in Kakao Map',
+      locationRequired: 'Check your current location before requesting directions.',
+      unavailable: 'The map could not be loaded.',
+      openApp: 'Kakao Map app',
+      openWeb: 'Web',
+      origin: 'From',
+      destination: 'To',
+      swap: 'Swap origin and destination',
+      pickOrigin: 'Choose origin',
+      pickDestination: 'Choose destination',
+      pickHint: 'Tap the map or pick a place from the list or a marker',
+      useCurrentLocation: 'Use my location',
+      mapPoint: 'Point picked on map',
+      notSet: 'Not set',
+      cancel: 'Cancel',
+      routeComparing: 'Comparing routes…',
+      routeCompareFailed: 'Could not load routes.',
+      selectBoth: 'Choose both an origin and a destination.',
+      transfers: '{count} transfers',
+      fare: 'Fare ₩{fare}',
+      toll: 'Toll ₩{fare}',
+      durationHours: '{h} h {m} min',
+      durationMinutes: '{m} min',
+      estimateTag: 'Straight-line estimate',
+      routeSteps: 'Route steps',
+      noRoute: 'No route'
     },
     ai: {
       narration: 'AI narration',
@@ -180,7 +266,12 @@ export const messages: Record<Lang, MessagesShape> = {
       loading: '読み込み中…',
       signInRequired: 'ログインが必要です。',
       logout: 'ログアウト',
-      empty: '表示する項目がありません。'
+      empty: '表示する項目がありません。',
+      clearSearch: '検索語を消去',
+      languageSelect: '言語を選択',
+      mainMenu: 'メインメニュー',
+      copied: 'リンクをコピーしました。',
+      shareFailed: '共有できませんでした。'
     },
     categories: {
       heritage: '文化遺産',
@@ -203,7 +294,11 @@ export const messages: Record<Lang, MessagesShape> = {
       recentPlace: '最近見た場所をもう一度',
       shorts: 'ショート',
       community: 'コミュニティ',
-      stamps: 'スタンプツアー'
+      stamps: 'スタンプツアー',
+      allHint: 'カテゴリーやツアーを選んで移動します。',
+      themeNight: '新羅の月夜・夜景さんぽコース',
+      themeFood: '慶州グルメ巡りコース',
+      themeHint: 'AIおすすめで自分の条件に合わせて作成'
     },
     stamps: {
       themes: 'テーマコース',
@@ -221,7 +316,41 @@ export const messages: Record<Lang, MessagesShape> = {
       nearbyCount: '3km以内に{count}件の観光地が見つかりました。',
       directions: '経路案内',
       walkingEstimate: '徒歩予想',
-      carRoute: '自動車経路'
+      walkingRoute: '徒歩',
+      publicRoute: '公共交通',
+      bicycleRoute: '自転車',
+      carRoute: '自動車',
+      searchArea: 'このエリアを検索',
+      kakaoSearch: 'カカオの場所を検索',
+      kakaoSearching: 'カカオの場所を検索中…',
+      kakaoCount: 'カカオの場所が{count}件見つかりました。',
+      kakaoSearchFailed: 'カカオの場所を読み込めませんでした。',
+      kakaoDetail: 'カカオマップで見る',
+      locationRequired: '経路検索の前に現在地を確認してください。',
+      unavailable: '地図を読み込めませんでした。',
+      openApp: 'カカオマップアプリ',
+      openWeb: 'Web',
+      origin: '出発',
+      destination: '到着',
+      swap: '出発と到着を入れ替え',
+      pickOrigin: '出発地を選択',
+      pickDestination: '到着地を選択',
+      pickHint: '地図をタップするか、リストやマーカーから場所を選んでください',
+      useCurrentLocation: '現在地を使用',
+      mapPoint: '地図で選んだ地点',
+      notSet: '未選択',
+      cancel: 'キャンセル',
+      routeComparing: '経路を比較しています…',
+      routeCompareFailed: '経路を読み込めませんでした。',
+      selectBoth: '出発地と到着地の両方を選択してください。',
+      transfers: '乗換{count}回',
+      fare: '料金{fare}ウォン',
+      toll: '通行料{fare}ウォン',
+      durationHours: '{h}時間{m}分',
+      durationMinutes: '{m}分',
+      estimateTag: '直線予想',
+      routeSteps: '経路案内',
+      noRoute: '経路なし'
     },
     ai: {
       narration: 'AI解説',
@@ -254,7 +383,12 @@ export const messages: Record<Lang, MessagesShape> = {
       loading: '加载中…',
       signInRequired: '请先登录。',
       logout: '退出登录',
-      empty: '暂无内容。'
+      empty: '暂无内容。',
+      clearSearch: '清除搜索',
+      languageSelect: '选择语言',
+      mainMenu: '主菜单',
+      copied: '已复制链接。',
+      shareFailed: '无法分享。'
     },
     categories: {
       heritage: '文化遗产',
@@ -277,7 +411,11 @@ export const messages: Record<Lang, MessagesShape> = {
       recentPlace: '再看看最近浏览的地点',
       shorts: '短视频',
       community: '社区',
-      stamps: '印章之旅'
+      stamps: '印章之旅',
+      allHint: '选择类别或行程即可前往。',
+      themeNight: '新罗月夜夜景漫步路线',
+      themeFood: '庆州美食探访路线',
+      themeHint: '在AI推荐中按你的条件生成'
     },
     stamps: {
       themes: '主题路线',
@@ -295,7 +433,41 @@ export const messages: Record<Lang, MessagesShape> = {
       nearbyCount: '在3公里范围内找到{count}个景点。',
       directions: '路线',
       walkingEstimate: '步行预计',
-      carRoute: '驾车路线'
+      walkingRoute: '步行',
+      publicRoute: '公共交通',
+      bicycleRoute: '自行车',
+      carRoute: '驾车',
+      searchArea: '搜索当前区域',
+      kakaoSearch: '搜索Kakao地点',
+      kakaoSearching: '正在搜索Kakao地点…',
+      kakaoCount: '找到{count}个Kakao地点。',
+      kakaoSearchFailed: '无法加载Kakao地点。',
+      kakaoDetail: '在Kakao地图中查看',
+      locationRequired: '请先确认当前位置再查询路线。',
+      unavailable: '无法加载地图。',
+      openApp: 'Kakao地图应用',
+      openWeb: '网页版',
+      origin: '出发',
+      destination: '到达',
+      swap: '交换起点和终点',
+      pickOrigin: '选择起点',
+      pickDestination: '选择终点',
+      pickHint: '点击地图，或从列表、标记中选择地点',
+      useCurrentLocation: '使用当前位置',
+      mapPoint: '地图上选择的地点',
+      notSet: '未选择',
+      cancel: '取消',
+      routeComparing: '正在比较路线…',
+      routeCompareFailed: '无法加载路线。',
+      selectBoth: '请同时选择起点和终点。',
+      transfers: '换乘{count}次',
+      fare: '费用{fare}韩元',
+      toll: '过路费{fare}韩元',
+      durationHours: '{h}小时{m}分钟',
+      durationMinutes: '{m}分钟',
+      estimateTag: '直线预估',
+      routeSteps: '路线指引',
+      noRoute: '无路线'
     },
     ai: {
       narration: 'AI讲解',
@@ -316,7 +488,7 @@ export const messages: Record<Lang, MessagesShape> = {
 };
 
 export function isLang(value: string | null | undefined): value is Lang {
-  return value !== null && value !== undefined && value in messages;
+  return value !== null && value !== undefined && languages.includes(value as Lang);
 }
 
 export function categoryLabel(category: PlaceCategory, lang: Lang): string {

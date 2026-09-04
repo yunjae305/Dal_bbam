@@ -20,6 +20,12 @@ type CourseBody = {
   stayMinutes?: number[];
 };
 
+const transportModes: readonly TransportMode[] = ['walking', 'car', 'public'];
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every(item => typeof item === 'string');
+}
+
 export async function GET(request: NextRequest) {
   const context = await getUserDataContext(request);
   if (isErrorContext(context)) return context.response;
@@ -39,9 +45,26 @@ export async function POST(request: NextRequest) {
   if (isErrorContext(context)) return context.response;
 
   const body = await parseBody<CourseBody>(request);
-  if (!body?.title?.trim()) return apiError('INVALID_TITLE', 'title이 필요합니다.');
+  if (!body || typeof body.title !== 'string' || !body.title.trim()) {
+    return apiError('INVALID_TITLE', 'title이 필요합니다.');
+  }
+  if (body.description !== undefined && typeof body.description !== 'string') {
+    return apiError('INVALID_COURSE', 'description 형식이 올바르지 않습니다.');
+  }
+  if (body.transport !== undefined && !transportModes.includes(body.transport)) {
+    return apiError('INVALID_COURSE', 'transport는 walking, car, public 중 하나여야 합니다.');
+  }
+  if (body.contentIds !== undefined && !isStringArray(body.contentIds)) {
+    return apiError('INVALID_COURSE', 'contentIds는 문자열 배열이어야 합니다.');
+  }
+  if (body.reasons !== undefined && !Array.isArray(body.reasons)) {
+    return apiError('INVALID_COURSE', 'reasons는 배열이어야 합니다.');
+  }
+  if (body.stayMinutes !== undefined && !Array.isArray(body.stayMinutes)) {
+    return apiError('INVALID_COURSE', 'stayMinutes는 배열이어야 합니다.');
+  }
 
-  const contentIds = (body.contentIds ?? []).slice(0, 20);
+  const contentIds = Array.from(new Set((body.contentIds ?? []).map(id => id.trim()).filter(Boolean))).slice(0, 20);
   const resolved = await Promise.all(contentIds.map(id => resolvePlaceId(context.db, id)));
   if (contentIds.length && resolved.some(id => !id)) {
     return apiError('PLACE_NOT_FOUND', '저장할 코스에 존재하지 않는 관광지가 있습니다.', 422);
@@ -71,8 +94,8 @@ export async function POST(request: NextRequest) {
       place_id: placeId as string,
       order_no: index,
       order_index: index,
-      reason: body.reasons?.[index] ?? null,
-      stay_minutes: Math.min(240, Math.max(15, body.stayMinutes?.[index] ?? 60))
+      reason: typeof body.reasons?.[index] === 'string' ? body.reasons[index].slice(0, 500) : null,
+      stay_minutes: Math.min(240, Math.max(15, Number.isFinite(body.stayMinutes?.[index]) ? Number(body.stayMinutes?.[index]) : 60))
     }));
     const { error } = await context.db.from('course_places').insert(rows);
     if (error) {

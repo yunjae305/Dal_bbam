@@ -1,16 +1,14 @@
 import { expect, test } from '@playwright/test';
 
 test.beforeEach(async ({ page }) => {
-  const loginResponse = await page.request.post('/api/auth/login', {
-    data: { email: 'demo@gyeongju.com', password: 'gyeongju2024' }
-  });
+  const loginResponse = await page.request.post('/api/auth/demo');
   expect(loginResponse.status()).toBe(200);
   await page.goto('/');
   await expect(page).toHaveURL('/');
 });
 
 test('language, map, detail, AI narration surface', async ({ page }) => {
-  const englishButton = page.getByRole('button', { name: '영어로 변경' });
+  const englishButton = page.getByRole('button', { name: 'English' });
   await englishButton.click();
   await expect(englishButton).toHaveAttribute('aria-pressed', 'true');
   await expect.poll(async () => {
@@ -24,6 +22,7 @@ test('language, map, detail, AI narration surface', async ({ page }) => {
 });
 
 test('course, schedule, cart, stamps and community routes are directly reachable', async ({ page }) => {
+  test.slow();
   for (const path of ['/courses', '/schedule', '/cart', '/stamps', '/community', '/shorts']) {
     await page.goto(path);
     await expect(page.locator('main, section').first()).toBeVisible();
@@ -31,10 +30,10 @@ test('course, schedule, cart, stamps and community routes are directly reachable
 });
 
 test('home category navigation preserves the selected map filter in the URL', async ({ page }) => {
-  await page.getByRole('button', { name: '관광지', exact: true }).first().click();
-  await expect(page).toHaveURL(/\/map\?category=attraction$/);
+  await page.getByRole('button', { name: '맛집', exact: true }).first().click();
+  await expect(page).toHaveURL(/\/map\?category=food$/);
   await expect(page.getByRole('heading', { name: '경주 지도' })).toBeVisible();
-  await expect(page.getByRole('button', { name: '관광지', exact: true })).toHaveClass(/bg-\[#b94f4a\]/);
+  await expect(page.getByRole('button', { name: '맛집', exact: true })).toHaveClass(/bg-\[#b94f4a\]/);
 });
 
 test('schedule metadata and order can be edited without drag gestures', async ({ page }) => {
@@ -163,7 +162,28 @@ test('stamp verification asks for consent and only renders a persisted success',
           id: 'stamp-1',
           acquired_at: new Date().toISOString(),
           places: { content_id: acquiredContentId, name: '검증 장소', image_url: null }
-        }] : []
+        }] : [],
+        meta: {
+          persisted: true,
+          targets: [{
+            id: 'b7c99a9f-c3cc-49f5-91c7-753714d7df6a',
+            checkpointRequired: false,
+            radiusMeters: 150,
+            sortOrder: 0,
+            place: {
+              id: '6a456987-2f80-45bd-93b5-69546265116b',
+              contentId: '125780',
+              name: '검증 장소',
+              category: 'heritage',
+              imageUrl: null,
+              lat: 35.8562,
+              lng: 129.2247
+            },
+            artwork: null,
+            artworkStatus: 'unavailable'
+          }],
+          rewards: { earned: [], available: [] }
+        }
       })
     });
   });

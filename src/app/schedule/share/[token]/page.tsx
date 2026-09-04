@@ -3,5 +3,5 @@ import { SharedPlanScreen } from '@/frontend/components/travel/shared-plan-scree
 
 export default async function SharedSchedulePage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
-  return <DirectPageShell><SharedPlanScreen kind="schedule" token={token} /></DirectPageShell>;
+  return <DirectPageShell publicView><SharedPlanScreen kind="schedule" token={token} /></DirectPageShell>;
 }

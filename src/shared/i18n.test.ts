@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { messages } from '@/shared/i18n';
+import { isLang, messages } from '@/shared/i18n';
 import { languages, placeCategories } from '@/shared/types';
 
 function keys(value: Record<string, unknown>): string[] {
@@ -24,5 +24,15 @@ describe('i18n dictionary', () => {
         expect(messages[lang].categories[category].trim()).not.toBe('');
       }
     }
+  });
+
+  it('accepts only the supported language codes, never prototype keys', () => {
+    for (const lang of languages) expect(isLang(lang)).toBe(true);
+    expect(isLang('__proto__')).toBe(false);
+    expect(isLang('constructor')).toBe(false);
+    expect(isLang('toString')).toBe(false);
+    expect(isLang('fr')).toBe(false);
+    expect(isLang(null)).toBe(false);
+    expect(isLang(undefined)).toBe(false);
   });
 });

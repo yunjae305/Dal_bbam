@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
@@ -228,7 +229,7 @@ function HomeScreen({
             placeholder={messages.common.searchPlaceholder}
           />
           {query ? (
-            <button type="button" onClick={() => setQuery('')} aria-label="검색어 지우기">
+            <button type="button" onClick={() => setQuery('')} aria-label={messages.common.clearSearch}>
               <X size={15} />
             </button>
           ) : (
@@ -319,10 +320,11 @@ function HomeScreen({
           </>
         ) : (
           <>
-            <SectionHeader title={messages.home.themes} action={`${messages.common.viewAll} >`} onAction={onOpenAll} />
+            <SectionHeader title={messages.home.themes} action={`${messages.common.viewAll} >`} onAction={() => { window.location.href = '/courses'; }} />
+            <p className="mb-4 px-1 text-[10px] font-bold text-[#8f8677]">{messages.home.themeHint}</p>
             <div className="space-y-5 px-3">
-              <CoursePreview image={places[0]?.image} title="OO님, 이런 야경 산책 코스 어때요?" />
-              <CoursePreview image={places[1]?.image} title="맛집 추천 코스" />
+              <CoursePreview image={places[0]?.image} title={messages.home.themeNight} href="/courses" />
+              <CoursePreview image={places[1]?.image} title={messages.home.themeFood} href="/courses?interest=food" />
             </div>
           </>
         )}
@@ -352,15 +354,15 @@ function HomeAllScreen({
 
   return (
     <section className="absolute inset-0 z-50 bg-black/42 px-4 pt-[250px] backdrop-blur-[2px]">
-      <button className="absolute inset-0 cursor-default" type="button" aria-label="전체보기 닫기" onClick={onClose} />
+      <button className="absolute inset-0 cursor-default" type="button" aria-label={messages.common.close} onClick={onClose} />
       <div className="relative w-full rounded-[28px] bg-[#fbfaf8] px-5 pb-5 pt-4 shadow-[0_18px_46px_rgba(0,0,0,.28)]">
         <div className="mx-auto mb-4 h-1.5 w-12 rounded-full bg-[#d8d1c7]" />
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-[22px] font-black tracking-[-0.03em]">전체보기</h1>
-            <p className="mt-1 text-[11px] font-bold text-[#8f98a6]">카테고리와 투어를 선택해 이동하세요.</p>
+            <h1 className="text-[22px] font-black tracking-[-0.03em]">{messages.common.viewAll}</h1>
+            <p className="mt-1 text-[11px] font-bold text-[#8f98a6]">{messages.home.allHint}</p>
           </div>
-          <button className="grid h-10 w-10 place-items-center rounded-full bg-[#f1f2f4] transition-transform active:scale-[0.96]" type="button" onClick={onClose} aria-label="닫기">
+          <button className="grid h-10 w-10 place-items-center rounded-full bg-[#f1f2f4] transition-transform active:scale-[0.96]" type="button" onClick={onClose} aria-label={messages.common.close}>
             <img src="/assets/common/icons/닫기.png" alt="" aria-hidden="true" className="h-4 w-4 object-contain opacity-55" />
           </button>
         </div>
@@ -389,7 +391,7 @@ function HomeAllScreen({
             onClick={onOpenStamp}
           >
             <Check size={22} strokeWidth={2} />
-            스탬프 투어
+            {messages.home.stamps}
           </button>
         </div>
       </div>
@@ -485,13 +487,15 @@ function SectionHeader({ title, action, onAction }: { title: string; action?: st
 }
 
 
-function CoursePreview({ image, title }: { image?: string; title: string }) {
+function CoursePreview({ image, title, href }: { image?: string; title: string; href: string }) {
   return (
     <article>
-      <div className="h-[118px] overflow-hidden rounded-lg bg-[#d8d8d8]">
-        {image && <img className="h-full w-full object-cover opacity-65" src={image} alt={title} />}
-      </div>
-      <p className="mt-3 text-[11px] font-bold">{title}</p>
+      <Link href={href} className="block transition-transform active:scale-[0.98]">
+        <span className="block h-[118px] overflow-hidden rounded-lg bg-[#d8d8d8]">
+          {image && <img className="h-full w-full object-cover opacity-65" src={image} alt="" />}
+        </span>
+        <span className="mt-3 block text-[11px] font-bold">{title}</span>
+      </Link>
     </article>
   );
 }

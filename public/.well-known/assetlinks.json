@@ -1,0 +1,14 @@
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "kr.dalbbam.gyeongju",
+      "sha256_cert_fingerprints": [
+        "3E:41:69:E2:71:F1:8D:54:A1:45:10:0D:68:0A:F6:8E:E1:AE:02:D1:F9:79:A1:B0:7B:E6:09:33:38:A1:A9:8B"
+      ]
+    }
+  }
+]

@@ -1,18 +1,16 @@
 import { NextRequest } from 'next/server';
-import { apiData, apiError, checkRateLimit, getUserDataContext, isErrorContext } from '@/backend/http';
+import { apiData, apiError, checkRateLimit, getUserDataContext, isErrorContext, rateLimitError } from '@/backend/http';
 import { getOrCreateNarration } from '@/backend/narration';
 import { isLang } from '@/shared/i18n';
-import { isFeatureEnabled } from '@/backend/features';
 
 type RouteContext = { params: Promise<{ contentId: string }> };
 
 export async function GET(request: NextRequest, { params }: RouteContext) {
-  if (!isFeatureEnabled('ai')) return apiError('FEATURE_DISABLED', 'AI 해설 기능이 비활성화되어 있습니다.', 503);
+  // With AI switched off the narration falls back to the template text (isAiGenerated: false).
   const context = await getUserDataContext(request);
   if (isErrorContext(context)) return context.response;
-  if (!await checkRateLimit(context, 'ai:narration', 15)) {
-    return apiError('RATE_LIMITED', '잠시 후 다시 시도해 주세요.', 429);
-  }
+  const rateLimit = await checkRateLimit(context, 'ai:narration', 15);
+  if (rateLimit !== 'ok') return rateLimitError(rateLimit, '잠시 후 다시 시도해 주세요.');
 
   const { contentId } = await params;
   const langParam = request.nextUrl.searchParams.get('lang');

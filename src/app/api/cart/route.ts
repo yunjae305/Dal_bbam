@@ -4,6 +4,7 @@ import {
   apiError,
   getUserDataContext,
   isErrorContext,
+  isUuid,
   parseBody,
   resolvePlaceId
 } from '@/backend/http';
@@ -55,13 +56,17 @@ export async function DELETE(request: NextRequest) {
 
   const id = request.nextUrl.searchParams.get('id');
   if (!id) return apiError('INVALID_CART_ITEM', 'id가 필요합니다.');
+  if (!isUuid(id)) return apiError('INVALID_CART_ITEM', 'id 형식이 올바르지 않습니다.');
 
-  const { error } = await context.db
+  const { data, error } = await context.db
     .from('cart_items')
     .delete()
     .eq('id', id)
-    .eq('actor_key', context.user.actorKey);
+    .eq('actor_key', context.user.actorKey)
+    .select('id')
+    .maybeSingle();
 
   if (error) return apiError('CART_DELETE_FAILED', error.message, 500);
+  if (!data) return apiError('CART_ITEM_NOT_FOUND', '장바구니 항목을 찾을 수 없습니다.', 404);
   return apiData({ deleted: true }, { headers: { 'Cache-Control': 'private, no-store' } });
 }

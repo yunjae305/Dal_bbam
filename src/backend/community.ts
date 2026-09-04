@@ -38,17 +38,26 @@ export function mapCommunityPost(
   };
 }
 
-export const communitySelect = [
-  'id',
-  'actor_key',
-  'author_name',
-  'category',
-  'title',
-  'content',
-  'rating',
-  'created_at',
-  'updated_at',
-  'places(content_id)',
-  'community_media(public_path)',
-  'community_bookmarks(actor_key)'
-].join(', ');
+/**
+ * Filters on embedded columns (`places.content_id`, `community_bookmarks.actor_key`)
+ * only prune the embedded rows unless the embed is declared `!inner`; use the
+ * inner variants when the filter must exclude parent posts.
+ */
+export function buildCommunitySelect(options: { placeInner?: boolean; bookmarkInner?: boolean } = {}) {
+  return [
+    'id',
+    'actor_key',
+    'author_name',
+    'category',
+    'title',
+    'content',
+    'rating',
+    'created_at',
+    'updated_at',
+    options.placeInner ? 'places!inner(content_id)' : 'places(content_id)',
+    'community_media(public_path)',
+    options.bookmarkInner ? 'community_bookmarks!inner(actor_key)' : 'community_bookmarks(actor_key)'
+  ].join(', ');
+}
+
+export const communitySelect = buildCommunitySelect();

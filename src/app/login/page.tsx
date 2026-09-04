@@ -2,10 +2,14 @@
 
 import { useEffect, useState } from 'react';
 import { Eye, EyeOff, Lock, Loader2, Mail, Sparkles, UserRound } from 'lucide-react';
+import { useLocale } from '@/frontend/i18n/locale-context';
+import { uiMessages } from '@/shared/ui-messages';
 
 type Mode = 'login' | 'signup';
 
 export default function LoginPage() {
+  const { locale } = useLocale();
+  const ui = uiMessages[locale].auth;
   const [mode, setMode] = useState<Mode>('login');
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
@@ -16,6 +20,7 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+  const [demoEnabled, setDemoEnabled] = useState(false);
 
   const isSignup = mode === 'signup';
 
@@ -23,24 +28,32 @@ export default function LoginPage() {
     const params = new URLSearchParams(window.location.search);
     const loginError = params.get('error');
 
-    const kakaoErrors: Record<string, string> = {
-      kakao_not_configured: '카카오 로그인 서버 설정을 확인해 주세요.',
-      kakao_cancelled: '카카오 로그인이 취소되었습니다.',
-      kakao_authorization_failed: '카카오 인증 요청을 완료하지 못했습니다.',
-      kakao_code_missing: '카카오 인가 코드가 전달되지 않았습니다. 다시 시도해 주세요.',
-      kakao_state_mismatch: '로그인 요청이 만료되었거나 올바르지 않습니다. 다시 시도해 주세요.',
-      kakao_token_failed: '카카오 인증 토큰을 발급받지 못했습니다. 다시 시도해 주세요.',
-      kakao_user_failed: '카카오 사용자 정보를 불러오지 못했습니다.',
-      kakao_user_persistence_failed: '서비스 회원 정보를 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.',
+    const loginErrors: Record<string, string> = {
+      kakao_not_configured: ui.kakaoNotConfigured,
+      kakao_cancelled: ui.kakaoCancelled,
+      kakao_authorization_failed: ui.kakaoAuthorizationFailed,
+      kakao_code_missing: ui.kakaoCodeMissing,
+      kakao_state_mismatch: ui.kakaoStateMismatch,
+      kakao_token_failed: ui.kakaoTokenFailed,
+      kakao_user_failed: ui.kakaoUserFailed,
+      kakao_user_persistence_failed: ui.kakaoPersistenceFailed,
       // 이전 URL과 세션에서 돌아오는 사용자를 위한 호환 메시지입니다.
-      kakao_state: '로그인 요청이 만료되었습니다. 다시 시도해 주세요.',
-      kakao_login: '카카오 로그인 중 오류가 발생했습니다.'
+      kakao_state: ui.kakaoStateExpired,
+      kakao_login: ui.kakaoLoginFailed,
+      google_not_configured: ui.googleNotConfigured,
+      google_authorization_failed: ui.googleAuthorizationFailed,
+      auth_callback_failed: ui.callbackFailed
     };
 
-    if (loginError && kakaoErrors[loginError]) {
-      setError(kakaoErrors[loginError]);
+    if (loginError && loginErrors[loginError]) {
+      setError(loginErrors[loginError]);
     }
-  }, []);
+
+    void fetch('/api/auth/demo', { cache: 'no-store' })
+      .then(response => response.json())
+      .then((payload: { enabled?: boolean }) => setDemoEnabled(payload.enabled === true))
+      .catch(() => setDemoEnabled(false));
+  }, [ui]);
 
   function switchMode(next: Mode) {
     setMode(next);
@@ -48,9 +61,8 @@ export default function LoginPage() {
     setMessage('');
   }
 
-  function showSocialNotice(provider: string) {
-    setError('');
-    setMessage(`${provider} 로그인은 준비 중입니다.`);
+  function startGoogleLogin() {
+    window.location.assign('/api/auth/google/login');
   }
 
   function startKakaoLogin() {
@@ -67,12 +79,38 @@ export default function LoginPage() {
       const result = await res.json() as { error?: string };
 
       if (!res.ok) {
-        setError(result.error ?? '데모 로그인에 실패했습니다.');
+        setError(result.error ?? ui.demoFailed);
       } else {
         window.location.replace('/');
       }
     } catch {
-      setError('네트워크 연결을 확인해 주세요.');
+      setError(ui.networkError);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function requestPasswordReset() {
+    setError('');
+    setMessage('');
+    if (!/^\S+@\S+\.\S+$/.test(email.trim())) {
+      setError(ui.enterResetEmail);
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const response = await fetch('/api/auth/password/reset', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim() })
+      });
+      const payload = await response.json() as { error?: string };
+      if (!response.ok) setError(payload.error ?? ui.resetMailFailed);
+      else setMessage(ui.resetMailSent);
+    } catch {
+      setError(ui.networkError);
     } finally {
       setLoading(false);
     }
@@ -85,11 +123,11 @@ export default function LoginPage() {
 
     if (isSignup) {
       if (name.trim().length < 2) {
-        setError('이름은 2자 이상 입력해 주세요.');
+        setError(ui.nameTooShort);
         return;
       }
       if (password !== passwordConfirm) {
-        setError('비밀번호가 일치하지 않습니다.');
+        setError(ui.passwordMismatch);
         return;
       }
     }
@@ -107,12 +145,14 @@ export default function LoginPage() {
       const result = await res.json() as { error?: string };
 
       if (!res.ok) {
-        setError(result.error ?? '오류가 발생했습니다.');
+        setError(result.error ?? ui.genericError);
       } else if (isSignup) {
-        setMessage('인증 메일을 보냈습니다. 메일의 링크를 눌러 인증하면 회원가입이 완료됩니다.');
+        setMessage(ui.verificationSent);
       } else {
         window.location.replace('/');
       }
+    } catch {
+      setError(ui.networkError);
     } finally {
       setLoading(false);
     }
@@ -124,13 +164,13 @@ export default function LoginPage() {
         className="relative mx-auto flex min-h-dvh w-full max-w-[430px] flex-col overflow-hidden bg-cover bg-center px-6 pb-[calc(env(safe-area-inset-bottom)+28px)] pt-[calc(env(safe-area-inset-top)+16px)] shadow-2xl"
         style={{
           backgroundImage:
-            "linear-gradient(180deg, rgba(0,0,0,0.26) 0%, rgba(0,0,0,0.08) 33%, rgba(0,0,0,0.36) 66%, rgba(0,0,0,0.64) 100%), url('/login-spring-bg.png')"
+            "linear-gradient(180deg, rgba(0,0,0,0.26) 0%, rgba(0,0,0,0.08) 33%, rgba(0,0,0,0.36) 66%, rgba(0,0,0,0.64) 100%), url('/login-spring-bg.webp')"
         }}
       >
         <div className="pointer-events-none absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/55 via-black/20 to-transparent" />
 
         <header className="relative z-10 text-[12px] font-semibold tracking-[-0.01em] text-white/85">
-          로그인/회원가입
+          {ui.header}
         </header>
 
         <div className="relative z-10 flex flex-1 flex-col justify-end">
@@ -141,14 +181,14 @@ export default function LoginPage() {
                 onClick={() => switchMode('login')}
                 className={`h-8 flex-1 rounded-full transition ${!isSignup ? 'bg-white text-[#2f2928]' : 'text-white/80'}`}
               >
-                로그인
+                {ui.login}
               </button>
               <button
                 type="button"
                 onClick={() => switchMode('signup')}
                 className={`h-8 flex-1 rounded-full transition ${isSignup ? 'bg-white text-[#2f2928]' : 'text-white/80'}`}
               >
-                회원가입
+                {ui.signup}
               </button>
             </div>
 
@@ -160,7 +200,7 @@ export default function LoginPage() {
                   required
                   inputMode="email"
                   autoComplete="email"
-                  placeholder="이메일 주소"
+                  placeholder={ui.email}
                   value={email}
                   onChange={setEmail}
                 />
@@ -170,7 +210,7 @@ export default function LoginPage() {
                   required
                   minLength={2}
                   autoComplete="name"
-                  placeholder="이름 (2자 이상)"
+                  placeholder={ui.name}
                   value={name}
                   onChange={setName}
                 />
@@ -180,7 +220,7 @@ export default function LoginPage() {
                   required
                   minLength={6}
                   autoComplete="new-password"
-                  placeholder="비밀번호"
+                  placeholder={ui.password}
                   value={password}
                   onChange={setPassword}
                   trailing={(
@@ -188,7 +228,7 @@ export default function LoginPage() {
                       type="button"
                       onClick={() => setShowPassword(v => !v)}
                       className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[#7b8080]"
-                      aria-label={showPassword ? '비밀번호 숨기기' : '비밀번호 보기'}
+                      aria-label={showPassword ? ui.hidePassword : ui.showPassword}
                     >
                       {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                     </button>
@@ -200,7 +240,7 @@ export default function LoginPage() {
                   required
                   minLength={6}
                   autoComplete="new-password"
-                  placeholder="비밀번호 확인"
+                  placeholder={ui.passwordConfirm}
                   value={passwordConfirm}
                   onChange={setPasswordConfirm}
                   trailing={(
@@ -208,7 +248,7 @@ export default function LoginPage() {
                       type="button"
                       onClick={() => setShowPasswordConfirm(v => !v)}
                       className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[#7b8080]"
-                      aria-label={showPasswordConfirm ? '비밀번호 확인 숨기기' : '비밀번호 확인 보기'}
+                      aria-label={showPasswordConfirm ? ui.hidePasswordConfirm : ui.showPasswordConfirm}
                     >
                       {showPasswordConfirm ? <EyeOff size={18} /> : <Eye size={18} />}
                     </button>
@@ -223,7 +263,7 @@ export default function LoginPage() {
                   required
                   inputMode="email"
                   autoComplete="email"
-                  placeholder="이메일 주소"
+                  placeholder={ui.email}
                   value={email}
                   onChange={setEmail}
                 />
@@ -233,7 +273,7 @@ export default function LoginPage() {
                   required
                   minLength={1}
                   autoComplete="current-password"
-                  placeholder="비밀번호"
+                  placeholder={ui.password}
                   value={password}
                   onChange={setPassword}
                   trailing={(
@@ -241,7 +281,7 @@ export default function LoginPage() {
                       type="button"
                       onClick={() => setShowPassword(v => !v)}
                       className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[#7b8080]"
-                      aria-label={showPassword ? '비밀번호 숨기기' : '비밀번호 보기'}
+                      aria-label={showPassword ? ui.hidePassword : ui.showPassword}
                     >
                       {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                     </button>
@@ -266,12 +306,12 @@ export default function LoginPage() {
               className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-[#3d353a]/95 text-[13px] font-bold text-white shadow-[0_10px_28px_rgba(0,0,0,0.34)] transition-[transform,opacity] active:scale-[0.96] disabled:opacity-65"
             >
               {loading && <Loader2 className="animate-spin" size={17} />}
-              {isSignup ? '가입하기' : '로그인'}
+              {isSignup ? ui.join : ui.login}
             </button>
 
             <div className="mt-2 flex items-center justify-center gap-2 text-[11px] font-semibold text-white/75">
-              <button type="button" className="px-1" onClick={() => setMessage('비밀번호 찾기는 준비 중입니다.')}>
-                비밀번호 찾기
+              <button type="button" className="min-h-11 px-1" onClick={() => void requestPasswordReset()}>
+                {ui.forgotPassword}
               </button>
               <span className="text-white/45">·</span>
               <button
@@ -279,7 +319,7 @@ export default function LoginPage() {
                 className="px-1"
                 onClick={() => switchMode(isSignup ? 'login' : 'signup')}
               >
-                {isSignup ? '로그인' : '회원가입'}
+                {isSignup ? ui.login : ui.signup}
               </button>
             </div>
 
@@ -289,7 +329,7 @@ export default function LoginPage() {
                   type="button"
                   onClick={startKakaoLogin}
                   className="flex h-[45px] w-full items-center justify-center rounded-xl transition-transform active:scale-[0.96]"
-                  aria-label="카카오 로그인"
+                  aria-label={ui.kakaoLogin}
                 >
                   <img
                     src="/assets/auth/images/카카오-로그인-버튼.png"
@@ -300,9 +340,9 @@ export default function LoginPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => showSocialNotice('Google')}
+                  onClick={startGoogleLogin}
                   className="flex h-11 w-full items-center justify-center transition-transform active:scale-[0.96]"
-                  aria-label="Google 로그인"
+                  aria-label={ui.googleLogin}
                 >
                   <img
                     src="/assets/auth/images/구글-로그인-버튼.png"
@@ -311,17 +351,23 @@ export default function LoginPage() {
                     className="h-10 w-[189px] object-contain shadow-[0_8px_20px_rgba(0,0,0,0.22)]"
                   />
                 </button>
-                <button
-                  type="button"
-                  onClick={startDemoLogin}
-                  disabled={loading}
-                  className="flex h-11 items-center justify-center gap-2 rounded-sm bg-[#2f7567]/95 text-[12px] font-black text-white shadow-[0_8px_20px_rgba(0,0,0,0.22)] transition-[transform,opacity] active:scale-[0.96] disabled:opacity-65"
-                >
-                  {loading ? <Loader2 className="animate-spin" size={16} /> : <Sparkles size={16} />}
-                  데모 계정으로 체험하기
-                </button>
+                {demoEnabled && (
+                  <button
+                    type="button"
+                    onClick={startDemoLogin}
+                    disabled={loading}
+                    className="flex h-11 items-center justify-center gap-2 rounded-sm bg-[#2f7567]/95 text-[12px] font-black text-white shadow-[0_8px_20px_rgba(0,0,0,0.22)] transition-[transform,opacity] active:scale-[0.96] disabled:opacity-65"
+                  >
+                    {loading ? <Loader2 className="animate-spin" size={16} /> : <Sparkles size={16} />}
+                    {ui.demoLogin}
+                  </button>
+                )}
               </div>
             )}
+            <p className="mt-5 text-center text-[10px] font-semibold leading-5 text-white/70">
+              {ui.continuePrefix}{' '}<a href="/legal/terms" className="underline underline-offset-2">{ui.terms}</a>{' · '}
+              <a href="/legal/privacy" className="underline underline-offset-2">{ui.privacy}</a>{ui.continueSuffix}
+            </p>
           </form>
         </div>
       </section>

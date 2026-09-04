@@ -1,17 +1,14 @@
 import { createSupabaseServerClient } from '@/backend/supabase/server';
-import {
-  createSessionToken,
-  createStableUserId,
-  getAuthCookieOptions,
-  SESSION_COOKIE,
-  SESSION_COOKIE_MAX_AGE
-} from '@/backend/auth/session';
-import { NextResponse } from 'next/server';
+import { getAuthCookieOptions, SESSION_COOKIE } from '@/backend/auth/session';
+import { resolveSupabaseActorKey } from '@/backend/auth/actor-identity';
+import { isMutationAllowed } from '@/backend/http';
+import { NextRequest, NextResponse } from 'next/server';
 
-const DEMO_EMAIL = process.env.DEMO_EMAIL?.trim().toLowerCase() ?? '';
-const DEMO_PASSWORD = process.env.DEMO_PASSWORD ?? '';
+export async function POST(request: NextRequest) {
+  if (!isMutationAllowed(request)) {
+    return NextResponse.json({ error: '허용되지 않은 요청 출처입니다.' }, { status: 403 });
+  }
 
-export async function POST(request: Request) {
   let body: { email?: unknown; password?: unknown };
 
   try {
@@ -22,14 +19,8 @@ export async function POST(request: Request) {
 
   const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
   const password = typeof body.password === 'string' ? body.password : '';
-  const isDemoLogin = Boolean(DEMO_EMAIL && DEMO_PASSWORD && email === DEMO_EMAIL && password === DEMO_PASSWORD);
-
   if (!email || !password) {
     return NextResponse.json({ error: '이메일과 비밀번호를 입력해 주세요.' }, { status: 400 });
-  }
-
-  if (isDemoLogin) {
-    return createLoginResponse(DEMO_EMAIL);
   }
 
   const supabase = await createSupabaseServerClient();
@@ -42,23 +33,21 @@ export async function POST(request: Request) {
       await supabase.auth.signOut();
       return NextResponse.json({ error: '이메일 인증 후 로그인해 주세요.' }, { status: 403 });
     }
-    return createLoginResponse(data.user.email ?? email);
+    await resolveSupabaseActorKey({
+      userId: data.user.id,
+      email: data.user.email ?? email,
+      authProvider: typeof data.user.app_metadata?.provider === 'string'
+        ? data.user.app_metadata.provider
+        : 'email'
+    });
+
+    const response = NextResponse.json({ success: true });
+    response.cookies.set(SESSION_COOKIE, '', {
+      ...getAuthCookieOptions(),
+      maxAge: 0
+    });
+    return response;
   }
 
-  return NextResponse.json({ error: '이메일 또는 비밀번호가 올바르지 않습니다.' }, { status: 401 });
-}
-
-function createLoginResponse(email: string) {
-  const normalizedEmail = email.trim().toLowerCase();
-  const token = createSessionToken({
-    sub: createStableUserId('password', normalizedEmail),
-    email: normalizedEmail,
-    provider: 'password'
-  });
-  const res = NextResponse.json({ success: true });
-  res.cookies.set(SESSION_COOKIE, token, {
-    ...getAuthCookieOptions(),
-    maxAge: SESSION_COOKIE_MAX_AGE
-  });
-  return res;
+  return NextResponse.json({ error: '인증 서버에 연결할 수 없습니다.' }, { status: 503 });
 }

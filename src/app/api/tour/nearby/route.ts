@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { apiError } from '@/backend/http';
 import { getNearbyTourPlaces, TOUR_API_CACHE_CONTROL, TourApiConfigError, TourApiError } from '@/backend/tour-api';
 import { mapTourPlaceSummary } from '@/backend/tour-mvp-data';
 
@@ -11,7 +12,7 @@ export async function GET(request: NextRequest) {
     const mapY = params.get('mapY')?.trim();
 
     if (!mapX || !mapY) {
-      return NextResponse.json({ error: 'mapX and mapY are required.' }, { status: 400 });
+      return apiError('INVALID_QUERY', 'mapX and mapY are required.');
     }
 
     const result = await getNearbyTourPlaces({
@@ -29,13 +30,13 @@ export async function GET(request: NextRequest) {
     }, { headers: { 'Cache-Control': TOUR_API_CACHE_CONTROL } });
   } catch (error) {
     if (error instanceof TourApiConfigError) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return apiError('TOUR_API_NOT_CONFIGURED', 'TourAPI 키가 설정되지 않았습니다.', 500);
     }
 
     if (error instanceof TourApiError) {
-      return NextResponse.json({ error: error.message }, { status: error.status });
+      return apiError(error.status === 400 ? 'INVALID_QUERY' : 'TOUR_API_ERROR', error.message, error.status);
     }
 
-    return NextResponse.json({ error: 'Failed to load nearby TourAPI places.' }, { status: 500 });
+    return apiError('TOUR_API_FAILED', '주변 관광지를 불러오지 못했습니다.', 500);
   }
 }

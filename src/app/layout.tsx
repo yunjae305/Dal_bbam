@@ -10,8 +10,11 @@ export const metadata: Metadata = {
   description: '관광 데이터 기반 경주 여행 PWA MVP',
   applicationName: 'AI 경주',
   icons: {
-    icon: '/icon.svg',
-    apple: '/icon.svg'
+    icon: [
+      { url: '/icon-192.png', sizes: '192x192', type: 'image/png' },
+      { url: '/icon-512.png', sizes: '512x512', type: 'image/png' }
+    ],
+    apple: '/apple-touch-icon.png'
   },
   appleWebApp: {
     capable: true,

@@ -1,12 +1,15 @@
 import { NextRequest } from 'next/server';
 import { getCurrentUser } from '@/backend/auth/current-user';
-import { communitySelect, mapCommunityPost } from '@/backend/community';
+import { buildCommunitySelect, communitySelect, mapCommunityPost } from '@/backend/community';
 import {
   apiData,
   apiError,
+  checkRateLimit,
   getUserDataContext,
+  isConnectionFailure,
   isErrorContext,
   parseBody,
+  rateLimitError,
   resolvePlaceId
 } from '@/backend/http';
 import { moderateContent } from '@/backend/openai';
@@ -24,6 +27,8 @@ type PostBody = {
   mediaIds?: string[];
 };
 
+const COMMUNITY_UNAVAILABLE_MESSAGE = '커뮤니티 서비스에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.';
+
 export async function GET(request: NextRequest) {
   if (!isFeatureEnabled('community')) return apiError('FEATURE_DISABLED', '커뮤니티 기능이 비활성화되어 있습니다.', 503);
   const db = createSupabaseAdminClient();
@@ -32,10 +37,11 @@ export async function GET(request: NextRequest) {
   const category = request.nextUrl.searchParams.get('category');
   const contentId = request.nextUrl.searchParams.get('contentId');
   const bookmarked = request.nextUrl.searchParams.get('bookmarked') === 'true';
+  if (bookmarked && !user) return apiError('UNAUTHENTICATED', '로그인이 필요합니다.', 401);
 
   let query = db
     .from('community_posts')
-    .select(communitySelect)
+    .select(buildCommunitySelect({ placeInner: Boolean(contentId), bookmarkInner: bookmarked && Boolean(user) }))
     .eq('status', 'published')
     .order('created_at', { ascending: false })
     .limit(100);
@@ -44,9 +50,22 @@ export async function GET(request: NextRequest) {
   if (bookmarked && user) query = query.eq('community_bookmarks.actor_key', user.actorKey);
 
   const { data, error } = await query;
-  if (error) return apiError('COMMUNITY_READ_FAILED', error.message, 500);
+  if (error) {
+    console.error('[community] feed read failed', error.message);
+    if (isConnectionFailure(error)) return apiError('COMMUNITY_UNAVAILABLE', COMMUNITY_UNAVAILABLE_MESSAGE, 503);
+    return apiError('COMMUNITY_READ_FAILED', '게시물을 불러오지 못했습니다.', 500);
+  }
+  let rows = data ?? [];
+  if (user) {
+    const { data: blockedRows } = await db
+      .from('user_blocks')
+      .select('blocked_actor_key')
+      .eq('actor_key', user.actorKey);
+    const blocked = new Set((blockedRows ?? []).map(row => String(row.blocked_actor_key)));
+    rows = rows.filter(row => !blocked.has(String((row as { actor_key?: string }).actor_key)));
+  }
   return apiData(
-    (data ?? []).map(row => mapCommunityPost(row as never, user?.actorKey)),
+    rows.map(row => mapCommunityPost(row as never, user?.actorKey)),
     { headers: { 'Cache-Control': user ? 'private, no-store' : 'public, s-maxage=60' } }
   );
 }
@@ -55,13 +74,28 @@ export async function POST(request: NextRequest) {
   if (!isFeatureEnabled('community')) return apiError('FEATURE_DISABLED', '커뮤니티 기능이 비활성화되어 있습니다.', 503);
   const context = await getUserDataContext(request);
   if (isErrorContext(context)) return context.response;
+
   const body = await parseBody<PostBody>(request);
-  if (!body?.title?.trim() || !body.content?.trim() || !body.category || !categories.includes(body.category)) {
+  if (
+    !body ||
+    typeof body.title !== 'string' || !body.title.trim() ||
+    typeof body.content !== 'string' || !body.content.trim() ||
+    typeof body.category !== 'string' || !categories.includes(body.category)
+  ) {
     return apiError('INVALID_POST', '카테고리, 제목, 내용이 필요합니다.');
+  }
+  if (body.contentId !== undefined && (typeof body.contentId !== 'string' || !body.contentId.trim())) {
+    return apiError('INVALID_POST', '연결할 관광지 ID 형식이 올바르지 않습니다.');
+  }
+  if (body.mediaIds !== undefined && (!Array.isArray(body.mediaIds) || body.mediaIds.some(id => typeof id !== 'string'))) {
+    return apiError('INVALID_POST', '사진 목록 형식이 올바르지 않습니다.');
   }
   if (body.rating !== undefined && (!Number.isInteger(body.rating) || body.rating < 1 || body.rating > 5)) {
     return apiError('INVALID_RATING', '별점은 1~5 사이여야 합니다.');
   }
+
+  const rateLimit = await checkRateLimit(context, 'community-post', 5);
+  if (rateLimit !== 'ok') return rateLimitError(rateLimit, '게시 요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.');
 
   let moderation;
   try {
@@ -75,7 +109,7 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  const placeId = body.contentId ? await resolvePlaceId(context.db, body.contentId) : null;
+  const placeId = body.contentId ? await resolvePlaceId(context.db, body.contentId.trim()) : null;
   if (body.contentId && !placeId) return apiError('PLACE_NOT_FOUND', '연결할 관광지를 찾을 수 없습니다.', 404);
 
   const mediaIds = Array.from(new Set(body.mediaIds ?? [])).slice(0, 5);
@@ -85,42 +119,40 @@ export async function POST(request: NextRequest) {
       .select('id')
       .in('id', mediaIds)
       .eq('actor_key', context.user.actorKey)
-      .eq('status', 'approved');
+      .eq('status', 'approved')
+      .is('post_id', null);
     if ((media ?? []).length !== mediaIds.length) {
       return apiError('MEDIA_NOT_APPROVED', '검사를 통과한 본인 사진만 게시할 수 있습니다.', 422);
     }
   }
 
-  const { data, error } = await context.db
-    .from('community_posts')
-    .insert({
-      actor_key: context.user.actorKey,
-      author_name: context.user.name || '여행자',
-      category: body.category,
-      place_id: placeId,
-      title: body.title.trim().slice(0, 120),
-      content: body.content.trim().slice(0, 5000),
-      rating: body.rating ?? null,
-      status: 'published',
-      moderation: { categories: moderation.categories }
-    })
-    .select('id')
-    .single();
-  if (error || !data) return apiError('POST_SAVE_FAILED', error?.message ?? '게시물을 저장할 수 없습니다.', 500);
+  // Tips carry no rating; mirror the PATCH rule so a tip can never store one.
+  const rating = body.category === 'tip' ? null : body.rating ?? null;
 
-  if (mediaIds.length) {
-    await context.db
-      .from('community_media')
-      .update({ post_id: data.id })
-      .in('id', mediaIds)
-      .eq('actor_key', context.user.actorKey)
-      .eq('status', 'approved');
+  const { data: postId, error } = await context.db.rpc('create_community_post', {
+    p_actor_key: context.user.actorKey,
+    p_author_name: context.user.name || '여행자',
+    p_category: body.category,
+    p_place_id: placeId,
+    p_title: body.title.trim().slice(0, 120),
+    p_content: body.content.trim().slice(0, 5000),
+    p_rating: rating,
+    p_moderation: { categories: moderation.categories },
+    p_media_ids: mediaIds
+  });
+  if (error || !postId) {
+    const mediaConflict = error?.message?.includes('media_');
+    return apiError(
+      mediaConflict ? 'MEDIA_NOT_APPROVED' : 'POST_SAVE_FAILED',
+      mediaConflict ? '이미 사용됐거나 승인되지 않은 사진이 포함되어 있습니다.' : '게시물을 저장할 수 없습니다.',
+      mediaConflict ? 409 : 500
+    );
   }
 
   const { data: post, error: readError } = await context.db
     .from('community_posts')
     .select(communitySelect)
-    .eq('id', data.id)
+    .eq('id', String(postId))
     .single();
   if (readError) return apiError('POST_READ_FAILED', readError.message, 500);
   return apiData(mapCommunityPost(post as never, context.user.actorKey), {

@@ -9,20 +9,21 @@ const DEVELOPMENT_SECRET = 'dal-bbam-local-development-secret-change-me';
 export const SESSION_COOKIE = COOKIE_NAME;
 export const SESSION_COOKIE_MAX_AGE = Math.floor(TTL_MS / 1000);
 
-export type SessionProvider = 'password' | 'kakao';
+export type SessionProvider = 'password' | 'kakao' | 'demo';
 
 interface Payload {
   sub: string;
   email: string | null;
   name?: string;
   provider: SessionProvider;
+  sessionId?: string;
   iss: typeof ISSUER;
   aud: typeof AUDIENCE;
   iat: number;
   exp: number;
 }
 
-export type SessionUser = Pick<Payload, 'sub' | 'email' | 'name' | 'provider'>;
+export type SessionUser = Pick<Payload, 'sub' | 'email' | 'name' | 'provider' | 'sessionId'>;
 
 function getJwtSecret(): string {
   const secret = process.env.JWT_SECRET ?? process.env.SESSION_SECRET;
@@ -108,9 +109,11 @@ export function verifySessionToken(token: string): SessionUser | null {
     if (
       payload.iss !== ISSUER ||
       payload.aud !== AUDIENCE ||
-      !['password', 'kakao'].includes(payload.provider) ||
+      !['password', 'kakao', 'demo'].includes(payload.provider) ||
       typeof payload.sub !== 'string' ||
       (payload.email !== null && typeof payload.email !== 'string') ||
+      (payload.sessionId !== undefined && typeof payload.sessionId !== 'string') ||
+      (payload.provider === 'kakao' && !/^[0-9a-f-]{36}$/i.test(payload.sessionId ?? '')) ||
       !Number.isInteger(payload.iat) ||
       !Number.isInteger(payload.exp) ||
       payload.iat > now + 60 ||
@@ -124,7 +127,8 @@ export function verifySessionToken(token: string): SessionUser | null {
       sub: payload.sub,
       email: payload.email,
       name: payload.name,
-      provider: payload.provider
+      provider: payload.provider,
+      sessionId: payload.sessionId
     };
   } catch {
     return null;

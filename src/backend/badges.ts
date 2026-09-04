@@ -33,25 +33,28 @@ export async function awardStampBadges(
   actorKey: string,
   lang: Lang = 'ko'
 ): Promise<Badge[]> {
-  const { count } = await db
+  const { count, error: countError } = await db
     .from('stamps')
     .select('id', { count: 'exact', head: true })
     .eq('actor_key', actorKey);
+  if (countError) throw new Error(`STAMP_BADGE_COUNT_FAILED: ${countError.message}`);
   if (!count) return [];
 
-  const { data: definitions } = await db
+  const { data: definitions, error: definitionsError } = await db
     .from('badge_definitions')
     .select('*')
     .not('stamp_threshold', 'is', null)
     .lte('stamp_threshold', count);
+  if (definitionsError) throw new Error(`STAMP_BADGE_DEFINITIONS_FAILED: ${definitionsError.message}`);
   if (!definitions?.length) return [];
 
   const badgeIds = definitions.map(item => String(item.id));
-  const { data: existing } = await db
+  const { data: existing, error: existingError } = await db
     .from('user_badges')
     .select('badge_id')
     .eq('actor_key', actorKey)
     .in('badge_id', badgeIds);
+  if (existingError) throw new Error(`STAMP_BADGE_EXISTING_FAILED: ${existingError.message}`);
   const existingIds = new Set((existing ?? []).map(item => String(item.badge_id)));
   const newDefinitions = definitions.filter(item => !existingIds.has(String(item.id)));
   if (!newDefinitions.length) return [];
@@ -65,7 +68,7 @@ export async function awardStampBadges(
     })),
     { onConflict: 'actor_key,badge_id', ignoreDuplicates: true }
   );
-  if (error) return [];
+  if (error) throw new Error(`STAMP_BADGE_SAVE_FAILED: ${error.message}`);
   return newDefinitions.map(item => mapBadge(item as BadgeRow, lang, earnedAt));
 }
 
@@ -74,10 +77,15 @@ export async function getBadges(
   actorKey: string,
   lang: Lang
 ): Promise<{ earned: Badge[]; available: Badge[] }> {
-  const [{ data: definitions }, { data: earnedRows }] = await Promise.all([
+  const [
+    { data: definitions, error: definitionsError },
+    { data: earnedRows, error: earnedError }
+  ] = await Promise.all([
     db.from('badge_definitions').select('*').order('stamp_threshold', { ascending: true }),
     db.from('user_badges').select('badge_id, earned_at').eq('actor_key', actorKey)
   ]);
+  if (definitionsError) throw new Error(`BADGE_DEFINITIONS_READ_FAILED: ${definitionsError.message}`);
+  if (earnedError) throw new Error(`USER_BADGES_READ_FAILED: ${earnedError.message}`);
   const earnedById = new Map((earnedRows ?? []).map(row => [String(row.badge_id), String(row.earned_at)]));
   const badges = (definitions ?? []).map(row =>
     mapBadge(row as BadgeRow, lang, earnedById.get(String(row.id)))

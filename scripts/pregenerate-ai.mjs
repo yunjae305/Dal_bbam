@@ -47,34 +47,75 @@ const schema = {
   }
 };
 
-const { data: places, error: placesError } = await supabase
-  .from('places')
-  .select('id, content_id, name, overview, description, image_url')
-  .not('content_id', 'is', null)
-  .order('created_at', { ascending: true })
-  .limit(50);
-if (placesError) throw placesError;
+const PLACE_LIMIT = 50;
+const placeColumns = 'id, content_id, name, overview, description, image_url';
+
+// Stamp targets are the places users are guaranteed to open, so their
+// narrations must exist before the generic catalogue is filled in.
+const places = [];
+const seenPlaceIds = new Set();
+function addPlaces(rows) {
+  for (const row of rows ?? []) {
+    if (!row?.id || !row.content_id || seenPlaceIds.has(row.id) || places.length >= PLACE_LIMIT) continue;
+    seenPlaceIds.add(row.id);
+    places.push(row);
+  }
+}
+
+const { data: stampTargets, error: stampTargetsError } = await supabase
+  .from('stamp_targets')
+  .select(`place_id, sort_order, places(${placeColumns})`)
+  .eq('is_active', true)
+  .order('sort_order', { ascending: true });
+if (stampTargetsError) throw stampTargetsError;
+addPlaces((stampTargets ?? []).map(target => Array.isArray(target.places) ? target.places[0] : target.places));
+
+const configuredStampContentIds = [...new Set(
+  (process.env.STAMP_TARGET_CONTENT_IDS ?? '')
+    .split(',')
+    .map(value => value.trim())
+    .filter(Boolean)
+)];
+if (configuredStampContentIds.length) {
+  const { data: configured, error: configuredError } = await supabase
+    .from('places')
+    .select(placeColumns)
+    .in('content_id', configuredStampContentIds);
+  if (configuredError) throw configuredError;
+  addPlaces(
+    configuredStampContentIds.flatMap(contentId =>
+      (configured ?? []).filter(row => String(row.content_id) === contentId))
+  );
+}
+
+if (places.length < PLACE_LIMIT) {
+  const { data: catalogue, error: placesError } = await supabase
+    .from('places')
+    .select(placeColumns)
+    .not('content_id', 'is', null)
+    .order('created_at', { ascending: true })
+    .limit(PLACE_LIMIT + places.length);
+  if (placesError) throw placesError;
+  addPlaces(catalogue);
+}
 
 let generated = 0;
 let skipped = 0;
-for (const place of places ?? []) {
+for (const place of places) {
   const overview = String(place.overview || place.description || '').trim();
   if (!overview) continue;
   const sourceHash = createHash('sha256').update(overview).digest('hex');
 
   for (const lang of languages) {
-    const { data: cached } = await supabase
+    const { data: cached, error: cachedError } = await supabase
       .from('ai_narrations')
-      .select('id, audio_path')
+      .select('id, title, summary, narration, tags, audio_path')
       .eq('place_id', place.id)
       .eq('lang', lang)
       .eq('source_hash', sourceHash)
       .eq('prompt_version', promptVersion)
       .maybeSingle();
-    if (cached?.audio_path) {
-      skipped += 1;
-      continue;
-    }
+    if (cachedError) throw cachedError;
 
     let narration = cached;
     let content;
@@ -117,59 +158,74 @@ for (const place of places ?? []) {
         model,
         is_ai_generated: true,
         updated_at: new Date().toISOString()
-      }, { onConflict: 'place_id,lang,source_hash,prompt_version' }).select('id, audio_path').single();
+      }, { onConflict: 'place_id,lang,source_hash,prompt_version' }).select('id, title, summary, narration, tags, audio_path').single();
       if (error) throw error;
       narration = data;
     } else {
-      const { data, error } = await supabase
-        .from('ai_narrations')
-        .select('title, summary, narration, tags')
-        .eq('id', narration.id)
-        .single();
-      if (error) throw error;
-      content = data;
+      content = {
+        title: narration.title,
+        summary: narration.summary,
+        narration: narration.narration,
+        tags: narration.tags
+      };
     }
 
-    const speech = await openai.audio.speech.create({
-      model: ttsModel,
-      voice: 'alloy',
-      input: String(content.narration).slice(0, 4096),
-      response_format: 'mp3'
-    });
-    const audio = await speech.arrayBuffer();
-    const audioPath = `${place.content_id}/${lang}/${narration.id}.mp3`;
-    const { error: uploadError } = await supabase.storage
-      .from('narration-audio')
-      .upload(audioPath, audio, { contentType: 'audio/mpeg', upsert: true });
-    if (uploadError) throw uploadError;
-    await supabase.from('ai_narrations').update({ audio_path: audioPath }).eq('id', narration.id);
+    let audioPath = narration.audio_path;
+    if (!audioPath) {
+      const speech = await openai.audio.speech.create({
+        model: ttsModel,
+        voice: 'alloy',
+        input: String(content.narration).slice(0, 4096),
+        response_format: 'mp3'
+      });
+      const audio = await speech.arrayBuffer();
+      audioPath = `${place.content_id}/${lang}/${narration.id}.mp3`;
+      const { error: uploadError } = await supabase.storage
+        .from('narration-audio')
+        .upload(audioPath, audio, { contentType: 'audio/mpeg', upsert: true });
+      if (uploadError) throw uploadError;
+      const { error: audioUpdateError } = await supabase
+        .from('ai_narrations')
+        .update({ audio_path: audioPath })
+        .eq('id', narration.id);
+      if (audioUpdateError) throw audioUpdateError;
+    } else {
+      skipped += 1;
+    }
     const { data: audioUrl } = supabase.storage.from('narration-audio').getPublicUrl(audioPath);
 
-    const { data: existingShort } = await supabase
+    const { data: existingShort, error: existingShortError } = await supabase
       .from('shorts')
       .select('id')
       .eq('place_id', place.id)
       .eq('lang', lang)
+      .order('created_at', { ascending: true })
+      .limit(1)
       .maybeSingle();
-    if (!existingShort) {
-      const { error: shortError } = await supabase.from('shorts').insert({
-        place_id: place.id,
-        narration_id: narration.id,
-        lang,
-        title: content.title,
-        summary: content.summary,
-        narration: content.narration,
-        image_url: place.image_url,
-        audio_url: audioUrl.publicUrl,
-        duration_seconds: 60,
-        tags: content.tags,
-        is_published: true
-      });
-      if (shortError) throw shortError;
-    }
+    if (existingShortError) throw existingShortError;
+    const generatedContent = {
+      narration_id: narration.id,
+      title: content.title,
+      summary: content.summary,
+      narration: content.narration,
+      audio_url: audioUrl.publicUrl,
+      tags: content.tags,
+      updated_at: new Date().toISOString()
+    };
+    const { error: shortError } = existingShort
+      ? await supabase.from('shorts').update(generatedContent).eq('id', existingShort.id)
+      : await supabase.from('shorts').insert({
+          ...generatedContent,
+          place_id: place.id,
+          lang,
+          image_url: place.image_url,
+          duration_seconds: 60,
+          is_published: true
+        });
+    if (shortError) throw shortError;
     generated += 1;
-    process.stdout.write(`Generated ${place.content_id}:${lang}\n`);
+    process.stdout.write(`Synced ${place.content_id}:${lang}\n`);
   }
 }
 
-process.stdout.write(`Done. Generated ${generated}, skipped ${skipped} cached narrations.\n`);
+process.stdout.write(`Done. Synced ${generated} shorts, reused ${skipped} cached audio files.\n`);

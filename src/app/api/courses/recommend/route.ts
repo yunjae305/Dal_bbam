@@ -5,19 +5,20 @@ import {
   checkRateLimit,
   getUserDataContext,
   isErrorContext,
-  parseBody
+  parseBody,
+  rateLimitError
 } from '@/backend/http';
 import { createCoursePlan } from '@/backend/course-planner';
 import { getTourMvpData } from '@/backend/tour-mvp-data';
 import { placeToSummary } from '@/backend/place-mapper';
 import { isLang } from '@/shared/i18n';
 import { placeCategories, type CourseRequest } from '@/shared/types';
-import { isFeatureEnabled } from '@/backend/features';
 
 function parseRequest(value: Partial<CourseRequest> | null): CourseRequest | null {
-  if (!value) return null;
-  const days = Math.floor(Number(value.days ?? 1));
-  if (days < 1 || days > 7) return null;
+  if (!value || typeof value !== 'object') return null;
+  const days = value.days === undefined ? 1 : value.days;
+  if (!Number.isInteger(days) || days < 1 || days > 7) return null;
+  if (value.purpose !== undefined && typeof value.purpose !== 'string') return null;
 
   const companion = ['solo', 'couple', 'family', 'friends', 'group'].includes(String(value.companion))
     ? value.companion as CourseRequest['companion']
@@ -35,7 +36,7 @@ function parseRequest(value: Partial<CourseRequest> | null): CourseRequest | nul
 
   return {
     purpose: value.purpose?.slice(0, 120),
-    days,
+    days: days as number,
     companion,
     interests,
     pace,
@@ -45,15 +46,15 @@ function parseRequest(value: Partial<CourseRequest> | null): CourseRequest | nul
 }
 
 export async function POST(request: NextRequest) {
-  if (!isFeatureEnabled('ai')) return apiError('FEATURE_DISABLED', 'AI 코스 기능이 비활성화되어 있습니다.', 503);
+  // With AI switched off the rule-based planner still answers (generatedBy: 'fallback').
   const context = await getUserDataContext(request);
   if (isErrorContext(context)) return context.response;
-  if (!await checkRateLimit(context, 'ai:course', 5)) {
-    return apiError('RATE_LIMITED', '코스 추천 요청이 많습니다. 잠시 후 다시 시도해 주세요.', 429);
-  }
 
   const parsed = parseRequest(await parseBody<Partial<CourseRequest>>(request));
   if (!parsed) return apiError('INVALID_COURSE_REQUEST', '1~7일 범위의 올바른 코스 조건이 필요합니다.');
+
+  const rateLimit = await checkRateLimit(context, 'ai:course', 5);
+  if (rateLimit !== 'ok') return rateLimitError(rateLimit, '코스 추천 요청이 많습니다. 잠시 후 다시 시도해 주세요.');
 
   const data = await getTourMvpData(parsed.lang);
   const candidates = data.places.map(placeToSummary).filter(place =>

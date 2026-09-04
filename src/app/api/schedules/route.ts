@@ -33,9 +33,13 @@ export async function POST(request: NextRequest) {
   if (isErrorContext(context)) return context.response;
 
   const body = await parseBody<ScheduleBody>(request);
-  const startDate = body?.startDate;
-  const endDate = body?.endDate ?? startDate;
-  if (!body?.title?.trim() || body.title.trim().length > 80 || !isDate(startDate) || !isDate(endDate) || endDate < startDate) {
+  if (!body || typeof body !== 'object') return apiError('INVALID_SCHEDULE', '올바른 제목과 시작일·종료일이 필요합니다.');
+  const startDate = typeof body.startDate === 'string' ? body.startDate : undefined;
+  const endDate = body.endDate === undefined ? startDate : typeof body.endDate === 'string' ? body.endDate : undefined;
+  if (
+    typeof body.title !== 'string' || !body.title.trim() || body.title.trim().length > 80 ||
+    !isDate(startDate) || !isDate(endDate) || endDate < startDate
+  ) {
     return apiError('INVALID_SCHEDULE', '올바른 제목과 시작일·종료일이 필요합니다.');
   }
 

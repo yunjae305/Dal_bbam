@@ -13,7 +13,13 @@ export default defineConfig({
     include: ['src/**/*.test.{ts,tsx}'],
     coverage: {
       reporter: ['text', 'json-summary'],
-      include: ['src/backend/**/*.ts', 'src/shared/**/*.ts']
+      include: ['src/backend/**/*.ts', 'src/shared/**/*.ts'],
+      thresholds: {
+        statements: 35,
+        branches: 30,
+        functions: 35,
+        lines: 35
+      }
     }
   }
 });

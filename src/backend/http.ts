@@ -14,12 +14,22 @@ export function apiData<T>(
   });
 }
 
+const DATABASE_UNREACHABLE_MESSAGE = '데이터 서비스에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.';
+
 export function apiError(
   code: string,
   message: string,
   status = 400,
   details?: unknown
 ) {
+  // Routes often forward a raw Supabase/PostgREST message on 500. When that
+  // message is really a connection failure, answer 503 with a stable text and
+  // keep the raw detail in the server log only.
+  if (status >= 500 && isConnectionFailure({ message })) {
+    console.error(`[api] ${code} database unreachable: ${message}`);
+    message = DATABASE_UNREACHABLE_MESSAGE;
+    status = 503;
+  }
   const body: ApiFailure = {
     error: details === undefined ? { code, message } : { code, message, details }
   };
@@ -87,11 +97,29 @@ export function isErrorContext(
   return 'response' in context;
 }
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export function isUuid(value: unknown): value is string {
+  return typeof value === 'string' && UUID_PATTERN.test(value);
+}
+
+/**
+ * Supabase-js surfaces transport failures (e.g. `TypeError: fetch failed`) as
+ * ordinary PostgrestError objects; detect them so callers can answer 503
+ * with a stable message instead of leaking the raw text.
+ */
+export function isConnectionFailure(error: { message?: string } | null | undefined): boolean {
+  const message = error?.message ?? '';
+  return /fetch failed|ECONNREFUSED|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|socket hang up|network/i.test(message);
+}
+
+export type RateLimitResult = 'ok' | 'limited' | 'error';
+
 export async function checkRateLimit(
   context: UserDataContext,
   scope: string,
   limit: number
-): Promise<boolean> {
+): Promise<RateLimitResult> {
   const now = new Date();
   now.setSeconds(0, 0);
   const windowStartedAt = now.toISOString();
@@ -103,10 +131,42 @@ export async function checkRateLimit(
   });
 
   if (error) {
+    // The atomic quota lives in Postgres; when the database is unreachable
+    // fall back to a per-instance in-memory window so features that do not
+    // need the database (narration templates, rule-based courses) keep working.
+    if (isConnectionFailure(error)) {
+      console.error('[rate-limit] database unreachable, using in-memory quota', error.message);
+      return consumeLocalRateLimit(`${context.user.actorKey}:${scope}`, limit, now.getTime());
+    }
     console.error('[rate-limit] atomic quota check failed', error.message);
-    return false;
+    return 'error';
   }
-  return data === true;
+  return data === true ? 'ok' : 'limited';
+}
+
+const localRateBuckets = new Map<string, { windowStart: number; count: number }>();
+
+function consumeLocalRateLimit(key: string, limit: number, windowStart: number): RateLimitResult {
+  const bucket = localRateBuckets.get(key);
+  if (!bucket || bucket.windowStart !== windowStart) {
+    localRateBuckets.set(key, { windowStart, count: 1 });
+    if (localRateBuckets.size > 5_000) {
+      for (const [bucketKey, entry] of localRateBuckets) {
+        if (entry.windowStart !== windowStart) localRateBuckets.delete(bucketKey);
+      }
+    }
+    return 'ok';
+  }
+  if (bucket.count >= limit) return 'limited';
+  bucket.count += 1;
+  return 'ok';
+}
+
+export function rateLimitError(result: Exclude<RateLimitResult, 'ok'>, limitedMessage: string) {
+  if (result === 'error') {
+    return apiError('RATE_LIMIT_UNAVAILABLE', '요청 한도를 확인할 수 없습니다.', 503);
+  }
+  return apiError('RATE_LIMITED', limitedMessage, 429);
 }
 
 export async function resolvePlaceId(

@@ -5,7 +5,9 @@ import {
   checkRateLimit,
   getUserDataContext,
   isErrorContext,
-  parseBody
+  isUuid,
+  parseBody,
+  rateLimitError
 } from '@/backend/http';
 import { generateStructured } from '@/backend/openai';
 import { isLang } from '@/shared/i18n';
@@ -35,13 +37,16 @@ export async function POST(request: NextRequest) {
   }
   const context = await getUserDataContext(request);
   if (isErrorContext(context)) return context.response;
-  if (!await checkRateLimit(context, 'ai:community-story', 5)) {
-    return apiError('RATE_LIMITED', '스토리 초안 요청이 많습니다. 잠시 후 다시 시도해 주세요.', 429);
-  }
 
   const body = await parseBody<{ mediaId?: string; lang?: string; notes?: string }>(request);
-  if (!body?.mediaId) return apiError('INVALID_MEDIA', 'mediaId가 필요합니다.');
+  if (!body || !isUuid(body.mediaId)) return apiError('INVALID_MEDIA', 'mediaId가 필요합니다.');
+  if (body.notes !== undefined && typeof body.notes !== 'string') {
+    return apiError('INVALID_MEDIA', 'notes 형식이 올바르지 않습니다.');
+  }
   const lang = isLang(body.lang) ? body.lang : 'ko';
+
+  const rateLimit = await checkRateLimit(context, 'ai:community-story', 5);
+  if (rateLimit !== 'ok') return rateLimitError(rateLimit, '스토리 초안 요청이 많습니다. 잠시 후 다시 시도해 주세요.');
 
   const { data: media } = await context.db
     .from('community_media')

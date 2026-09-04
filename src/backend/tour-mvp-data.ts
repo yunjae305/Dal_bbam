@@ -37,7 +37,10 @@ function field(item: TourPlaceSummary, key: string): string {
 }
 
 function numberField(item: TourPlaceSummary, key: string): number | null {
-  const value = Number(field(item, key));
+  const raw = field(item, key).trim();
+  // Number('') is 0, which would silently place the item in the Gulf of Guinea.
+  if (!raw) return null;
+  const value = Number(raw);
   return Number.isFinite(value) ? value : null;
 }
 
@@ -83,8 +86,8 @@ export function mapTourPlaceSummary(
     description: overview || `${address}에 위치한 경주 ${tag} 정보입니다.`,
     address,
     distance: field(item, 'dist') ? `${field(item, 'dist')}m` : '경주',
-    rating: 4.7,
-    bestTime: category === 'food' ? '12:30 추천' : category === 'festival' ? '일정 확인' : '09:00 추천',
+    rating: 0,
+    bestTime: category === 'festival' ? '일정 확인' : '',
     image: field(item, 'firstimage') || field(item, 'firstimage2') || FALLBACK_IMAGE,
     tags: [tag, category, field(item, 'cat3')].filter(Boolean),
     coordinates: [mapY ?? GYEONGJU_CENTER[0], mapX ?? GYEONGJU_CENTER[1]],
@@ -125,10 +128,8 @@ export async function getTourMvpData(lang: Lang = 'ko'): Promise<MvpData> {
     };
   }
 
-  if (lang !== 'ko') {
-    return fallback;
-  }
-
+  // Every locale reuses the Korean TourAPI list: the mapped translations fall
+  // back to Korean text, which beats the 5-item sample catalogue.
   try {
     const groups = await Promise.allSettled([
       loadTourPlaces('12', '6'),

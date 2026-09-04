@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { apiData, apiError } from '@/backend/http';
 import { getTourPlaceDetail, TOUR_API_CACHE_CONTROL, TourApiConfigError, TourApiError } from '@/backend/tour-api';
 
 export const runtime = 'nodejs';
@@ -8,23 +8,23 @@ export async function GET(_request: Request, context: { params: Promise<{ conten
     const { contentId } = await context.params;
 
     if (!contentId) {
-      return NextResponse.json({ error: 'contentId is required.' }, { status: 400 });
+      return apiError('INVALID_CONTENT_ID', 'contentId is required.');
     }
 
     const result = await getTourPlaceDetail(contentId);
 
-    return NextResponse.json({
+    return apiData({
       item: result.items[0] ?? null
     }, { headers: { 'Cache-Control': TOUR_API_CACHE_CONTROL } });
   } catch (error) {
     if (error instanceof TourApiConfigError) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return apiError('TOUR_API_NOT_CONFIGURED', 'TourAPI 키가 설정되지 않았습니다.', 500);
     }
 
     if (error instanceof TourApiError) {
-      return NextResponse.json({ error: error.message }, { status: error.status });
+      return apiError(error.status === 400 ? 'INVALID_QUERY' : 'TOUR_API_ERROR', error.message, error.status);
     }
 
-    return NextResponse.json({ error: 'Failed to load TourAPI place detail.' }, { status: 500 });
+    return apiError('TOUR_API_FAILED', 'TourAPI 관광지 상세 정보를 불러오지 못했습니다.', 500);
   }
 }

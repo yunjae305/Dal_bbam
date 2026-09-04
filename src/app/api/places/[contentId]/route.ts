@@ -84,34 +84,31 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
         const contentTypeId = field(row, 'contenttypeid') || field(row, 'contentTypeId') || '12';
         const introResult = await getTourPlaceIntro(contentId, contentTypeId).catch(() => null);
         const intro = introResult?.items[0] as ProviderRow | undefined;
-        const fallback = (await getTourMvpData(lang)).places.find(place => place.contentId === contentId);
         const mapY = Number(field(row, 'mapy'));
         const mapX = Number(field(row, 'mapx'));
         const images = (imageResult?.items ?? [])
           .map(image => field(image, 'originimgurl') || field(image, 'smallimageurl'))
           .filter(Boolean);
-        const primaryImage = field(row, 'firstimage') || fallback?.image || '/login-spring-bg.png';
+        const primaryImage = field(row, 'firstimage') || '/login-spring-bg.png';
         const overview = stripProviderHtml(field(row, 'overview'));
+        const address = [field(row, 'addr1'), field(row, 'addr2')].filter(Boolean).join(' ');
 
+        // The provider row is authoritative here; the MVP catalogue (Supabase +
+        // four TourAPI list calls) is only consulted in the final fallback below.
         const item: PlaceDetail = {
-          ...(fallback ? placeToSummary(fallback) : {
-            contentId,
-            category: 'attraction',
-            name: field(row, 'title') || '경주 관광지',
-            description: overview,
-            address: [field(row, 'addr1'), field(row, 'addr2')].filter(Boolean).join(' '),
-            imageUrl: primaryImage,
-            coordinates: [
-              Number.isFinite(mapY) ? mapY : 35.8562,
-              Number.isFinite(mapX) ? mapX : 129.2247
-            ],
-            tags: [],
-            source: 'tour-api'
-          }),
-          name: field(row, 'title') || fallback?.name || '경주 관광지',
-          description: overview || fallback?.description || '',
-          overview: overview || fallback?.description || '',
-          address: [field(row, 'addr1'), field(row, 'addr2')].filter(Boolean).join(' ') || fallback?.address || '경주시',
+          contentId,
+          category: 'attraction',
+          name: field(row, 'title') || '경주 관광지',
+          description: overview,
+          overview,
+          address: address || '경주시',
+          imageUrl: primaryImage,
+          coordinates: [
+            Number.isFinite(mapY) ? mapY : 35.8562,
+            Number.isFinite(mapX) ? mapX : 129.2247
+          ],
+          tags: [],
+          source: 'tour-api',
           phone: field(row, 'tel') || undefined,
           openingHours: intro
             ? field(intro, 'usetime') ||
@@ -121,7 +118,6 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
               undefined
             : undefined,
           homepageUrl: stripProviderHtml(field(row, 'homepage')) || undefined,
-          imageUrl: primaryImage,
           images: Array.from(new Set([primaryImage, ...images])),
           fetchedAt: new Date().toISOString()
         };

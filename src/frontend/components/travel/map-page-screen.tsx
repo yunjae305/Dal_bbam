@@ -2,12 +2,71 @@
 
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { Search } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { MapPin, RotateCw, Search } from 'lucide-react';
+import { useCallback, useMemo, useState } from 'react';
 import type { Category, Place, PlaceCategory } from '@/shared/types';
 import { placeCategories } from '@/shared/types';
-import { KakaoMapExplorer } from '@/frontend/components/travel/kakao-map-explorer';
+import {
+  KakaoMapExplorer,
+  type MapBounds,
+  type MapPlace
+} from '@/frontend/components/travel/kakao-map-explorer';
 import { useLocale } from '@/frontend/i18n/locale-context';
+
+type KakaoPlaceResult = {
+  id: string;
+  name: string;
+  categoryName: string;
+  categoryGroupCode: string;
+  categoryGroupName: string;
+  phone: string;
+  address: string;
+  roadAddress: string;
+  lat: number;
+  lng: number;
+  placeUrl: string;
+  distanceMeters: number | null;
+};
+
+const kakaoCategory: Record<Category, string> = {
+  all: 'AT4',
+  heritage: 'AT4',
+  attraction: 'AT4',
+  food: 'FD6',
+  lodging: 'AD5',
+  festival: 'AT4',
+  nature: 'AT4',
+  experience: 'AT4'
+};
+
+function placeCategory(result: KakaoPlaceResult, selected: Category): PlaceCategory {
+  if (selected !== 'all') return selected;
+  if (result.categoryGroupCode === 'FD6' || result.categoryName.includes('음식')) return 'food';
+  if (result.categoryGroupCode === 'AD5' || result.categoryName.includes('숙박')) return 'lodging';
+  if (result.categoryName.includes('문화') || result.categoryName.includes('유적')) return 'heritage';
+  return 'attraction';
+}
+
+function toMapPlace(result: KakaoPlaceResult, selected: Category): MapPlace {
+  const address = result.roadAddress || result.address;
+  return {
+    id: `kakao:${result.id}`,
+    contentId: `kakao:${result.id}`,
+    category: placeCategory(result, selected),
+    name: result.name,
+    description: result.categoryName,
+    address,
+    distance: result.distanceMeters === null ? '' : `${Math.max(1, Math.round(result.distanceMeters))}m`,
+    rating: 0,
+    bestTime: '',
+    image: '/icon.svg',
+    tags: result.categoryName.split('>').map(value => value.trim()).filter(Boolean),
+    coordinates: [result.lat, result.lng],
+    translations: {},
+    kakaoPlaceId: result.id,
+    kakaoPlaceUrl: result.placeUrl
+  };
+}
 
 export function MapPageScreen({ places }: { places: Place[] }) {
   const { messages } = useLocale();
@@ -21,15 +80,60 @@ export function MapPageScreen({ places }: { places: Place[] }) {
   const [category, setCategory] = useState<Category>(initialCategory);
   const [nearbyPlaces, setNearbyPlaces] = useState<Place[]>([]);
   const [nearbyLoading, setNearbyLoading] = useState(false);
+  const [kakaoPlaces, setKakaoPlaces] = useState<MapPlace[]>([]);
+  const [kakaoLoading, setKakaoLoading] = useState(false);
+  const [kakaoError, setKakaoError] = useState('');
+
   const allPlaces = useMemo(() => Array.from(
-    new Map([...nearbyPlaces, ...places].map(place => [place.contentId, place])).values()
-  ), [nearbyPlaces, places]);
+    new Map([...kakaoPlaces, ...nearbyPlaces, ...places].map(place => [place.contentId, place as MapPlace])).values()
+  ), [kakaoPlaces, nearbyPlaces, places]);
   const visible = useMemo(() => allPlaces.filter(place => {
     const matchesCategory = category === 'all' || place.category === category;
     const q = query.trim().toLowerCase();
     return matchesCategory && (!q || [place.name, place.description, place.address, ...place.tags].join(' ').toLowerCase().includes(q));
   }), [allPlaces, query, category]);
   const selected = visible.find(place => place.contentId === selectedId) ?? visible[0];
+
+  const searchKakao = useCallback(async (
+    bounds?: MapBounds,
+    nextCategory: Category = category,
+    nextQuery: string = query
+  ) => {
+    const params = new URLSearchParams({ size: '15' });
+    const keyword = nextQuery.trim();
+    if (keyword) params.set('query', keyword);
+    if (!keyword || nextCategory !== 'all') params.set('category', kakaoCategory[nextCategory]);
+    if (bounds) {
+      params.set('south', String(bounds.south));
+      params.set('west', String(bounds.west));
+      params.set('north', String(bounds.north));
+      params.set('east', String(bounds.east));
+    }
+
+    setKakaoLoading(true);
+    setKakaoError('');
+    try {
+      const response = await fetch(`/api/maps/places?${params}`, { cache: 'no-store' });
+      const payload = await response.json() as {
+        data?: { places?: KakaoPlaceResult[] };
+        error?: { message?: string };
+      };
+      if (!response.ok) throw new Error(payload.error?.message ?? messages.map.kakaoSearchFailed);
+      const next = (payload.data?.places ?? []).map(place => toMapPlace(place, nextCategory));
+      setKakaoPlaces(next);
+      if (next[0]) setSelectedId(next[0].contentId);
+    } catch (error) {
+      setKakaoError(error instanceof Error ? error.message : messages.map.kakaoSearchFailed);
+    } finally {
+      setKakaoLoading(false);
+    }
+  }, [category, messages.map.kakaoSearchFailed, query]);
+
+  const chooseCategory = useCallback((next: Category) => {
+    setCategory(next);
+    setKakaoPlaces([]);
+    void searchKakao(undefined, next);
+  }, [searchKakao]);
 
   return (
     <section className="grid min-h-[calc(100dvh-112px)]">
@@ -42,29 +146,66 @@ export function MapPageScreen({ places }: { places: Place[] }) {
               : messages.map.nearbyCount.replace('{count}', String(nearbyPlaces.length))}
           </p>
         )}
-        <label className="mt-4 flex h-11 items-center gap-2 rounded-xl bg-white px-3 shadow-sm ring-1 ring-black/5">
+        {(kakaoLoading || kakaoPlaces.length > 0 || kakaoError) && (
+          <p className={`mt-2 rounded-lg px-3 py-2 text-[10px] font-bold ${kakaoError ? 'bg-[#fff0eb] text-[#a04c48]' : 'bg-[#eef3ee] text-[#2f7567]'}`} role="status">
+            {kakaoError || (kakaoLoading
+              ? messages.map.kakaoSearching
+              : messages.map.kakaoCount.replace('{count}', String(kakaoPlaces.length)))}
+          </p>
+        )}
+        <form
+          className="mt-4 flex h-11 items-center gap-2 rounded-xl bg-white px-3 shadow-sm ring-1 ring-black/5"
+          onSubmit={event => {
+            event.preventDefault();
+            void searchKakao();
+          }}
+        >
           <Search size={16} />
-          <input value={query} onChange={event => setQuery(event.target.value)} placeholder={messages.common.searchPlaceholder} className="min-w-0 flex-1 bg-transparent text-[11px] outline-none" />
-        </label>
+          <input
+            value={query}
+            onChange={event => setQuery(event.target.value)}
+            placeholder={messages.common.searchPlaceholder}
+            aria-label={messages.common.searchPlaceholder}
+            className="min-w-0 flex-1 bg-transparent text-[11px] outline-none"
+          />
+          <button type="submit" disabled={kakaoLoading} aria-label={messages.map.kakaoSearch} className="grid h-8 w-8 place-items-center rounded-full bg-[#2f7567] text-white disabled:opacity-60">
+            {kakaoLoading ? <RotateCw className="animate-spin" size={14} /> : <Search size={14} />}
+          </button>
+        </form>
         <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
-          <button type="button" onClick={() => setCategory('all')} className={`shrink-0 rounded-full px-3 py-2 text-[9px] font-black ${category === 'all' ? 'bg-[#b94f4a] text-white' : 'bg-white'}`}>{messages.common.all}</button>
-          {placeCategories.map(item => <button key={item} type="button" onClick={() => setCategory(item)} className={`shrink-0 rounded-full px-3 py-2 text-[9px] font-black ${category === item ? 'bg-[#b94f4a] text-white' : 'bg-white'}`}>{messages.categories[item as PlaceCategory]}</button>)}
+          <button type="button" onClick={() => chooseCategory('all')} className={`shrink-0 rounded-full px-3 py-2 text-[9px] font-black ${category === 'all' ? 'bg-[#b94f4a] text-white' : 'bg-white'}`}>{messages.common.all}</button>
+          {placeCategories.map(item => (
+            <button key={item} type="button" onClick={() => chooseCategory(item)} className={`shrink-0 rounded-full px-3 py-2 text-[9px] font-black ${category === item ? 'bg-[#b94f4a] text-white' : 'bg-white'}`}>
+              {messages.categories[item]}
+            </button>
+          ))}
         </div>
         <div className="mt-4 space-y-2">
           {visible.map(place => (
             <article key={place.contentId} className={`grid grid-cols-[72px_1fr] gap-3 rounded-xl p-2 ${selected?.contentId === place.contentId ? 'bg-[#fff0eb] ring-1 ring-[#b94f4a]/30' : 'bg-white'}`}>
               <button type="button" onClick={() => setSelectedId(place.contentId)} aria-label={`${place.name} 지도에서 선택`} className="text-left">
-                <img src={place.image} alt={place.name} className="h-16 w-[72px] rounded-lg object-cover" />
+                {place.kakaoPlaceId ? (
+                  <span className="grid h-16 w-[72px] place-items-center rounded-lg bg-[#e8f2ed] text-[#2f7567]">
+                    <MapPin size={25} />
+                  </span>
+                ) : (
+                  <img src={place.image} alt={place.name} className="h-16 w-[72px] rounded-lg object-cover" />
+                )}
               </button>
               <div className="min-w-0">
                 <button type="button" onClick={() => setSelectedId(place.contentId)} className="block w-full text-left">
                   <strong className="block truncate text-[12px]">{place.name}</strong>
                   <span className="mt-1 block truncate text-[9px] text-[#76807d]">{messages.categories[place.category]} · {place.address}</span>
                 </button>
-                <Link href={`/places/${encodeURIComponent(place.contentId)}`} className="mt-2 inline-block text-[9px] font-black text-[#b94f4a]">상세 보기 →</Link>
+                {place.kakaoPlaceUrl ? (
+                  <a href={place.kakaoPlaceUrl} target="_blank" rel="noreferrer" className="mt-2 inline-block text-[9px] font-black text-[#2f7567]">{messages.map.kakaoDetail} →</a>
+                ) : (
+                  <Link href={`/places/${encodeURIComponent(place.contentId)}`} className="mt-2 inline-block text-[9px] font-black text-[#b94f4a]">상세 보기 →</Link>
+                )}
               </div>
             </article>
           ))}
+          {!visible.length && <p className="py-6 text-center text-[10px] text-[#76807d]">{messages.common.empty}</p>}
         </div>
       </aside>
       <div className="relative order-1 min-h-[55dvh]">
@@ -74,9 +215,11 @@ export function MapPageScreen({ places }: { places: Place[] }) {
           onSelect={place => setSelectedId(place.contentId)}
           onNearbyPlaces={next => {
             setNearbyPlaces(next);
-            setSelectedId(next[0]?.contentId ?? selectedId);
+            if (next[0]) setSelectedId(next[0].contentId);
           }}
           onNearbyLoading={setNearbyLoading}
+          onSearchArea={bounds => searchKakao(bounds)}
+          searchAreaLoading={kakaoLoading}
         />
       </div>
     </section>

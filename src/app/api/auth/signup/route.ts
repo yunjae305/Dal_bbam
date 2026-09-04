@@ -1,7 +1,12 @@
 import { createSupabaseServerClient } from '@/backend/supabase/server';
-import { NextResponse } from 'next/server';
+import { isMutationAllowed } from '@/backend/http';
+import { NextRequest, NextResponse } from 'next/server';
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
+  if (!isMutationAllowed(request)) {
+    return NextResponse.json({ error: '허용되지 않은 요청 출처입니다.' }, { status: 403 });
+  }
+
   let body: { email?: unknown; name?: unknown; password?: unknown };
 
   try {

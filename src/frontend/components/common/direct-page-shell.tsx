@@ -16,10 +16,10 @@ const links: NavLink[] = [
   { href: '/courses', key: 'course', icon: Sparkles },
   { href: '/map', key: 'map', icon: MapPin },
   { href: '/schedule', key: 'schedule', icon: CalendarDays },
-  { href: '/cart', key: 'my', icon: CircleUserRound, asset: '/assets/common/icons/프로필.png' }
+  { href: '/settings', key: 'my', icon: CircleUserRound, asset: '/assets/common/icons/프로필.png' }
 ];
 
-export function DirectPageShell({ children }: { children: React.ReactNode }) {
+export function DirectPageShell({ children, publicView = false }: { children: React.ReactNode; publicView?: boolean }) {
   const pathname = usePathname();
   const { messages } = useLocale();
   const [loggingOut, setLoggingOut] = useState(false);
@@ -41,7 +41,7 @@ export function DirectPageShell({ children }: { children: React.ReactNode }) {
           <Link href="/" className="shrink-0 text-white">DAL BBAM</Link>
           <div className="flex min-w-0 items-center gap-1">
             <LocaleSwitcher />
-            <button
+            {!publicView && <button
               type="button"
               onClick={() => void logout()}
               disabled={loggingOut}
@@ -50,11 +50,11 @@ export function DirectPageShell({ children }: { children: React.ReactNode }) {
               title={messages.common.logout}
             >
               {loggingOut ? <LoaderCircle size={14} className="animate-spin" /> : <LogOut size={14} />}
-            </button>
+            </button>}
           </div>
         </div>
-        <div className="pb-[calc(72px+env(safe-area-inset-bottom))]">{children}</div>
-        <nav className="fixed bottom-0 left-1/2 z-40 grid min-h-[64px] w-full max-w-[430px] -translate-x-1/2 grid-cols-5 items-center border-t bg-[#f5f1ea]/95 px-5 pb-[env(safe-area-inset-bottom)] backdrop-blur" aria-label="주요 메뉴">
+        <div className={publicView ? 'pb-8' : 'pb-[calc(72px+env(safe-area-inset-bottom))]'}>{children}</div>
+        {!publicView && <nav className="fixed bottom-0 left-1/2 z-40 grid min-h-[64px] w-full max-w-[430px] -translate-x-1/2 grid-cols-5 items-center border-t bg-[#f5f1ea]/95 px-5 pb-[env(safe-area-inset-bottom)] backdrop-blur" aria-label={messages.common.mainMenu}>
           {links.map(({ href, key, icon: Icon, asset, activeAsset }) => {
             const active = href === '/' ? pathname === '/' : pathname.startsWith(href);
             const iconAsset = active ? activeAsset ?? asset : asset;
@@ -69,7 +69,7 @@ export function DirectPageShell({ children }: { children: React.ReactNode }) {
               </Link>
             );
           })}
-        </nav>
+        </nav>}
       </div>
     </main>
   );

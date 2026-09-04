@@ -1,22 +1,30 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 import { verifySessionToken, SESSION_COOKIE } from '@/backend/auth/session';
+import { validatePersistedSession } from '@/backend/auth/persisted-session';
+import { isDemoModeEnabled } from '@/backend/auth/demo';
 
 export async function proxy(request: NextRequest) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
   const isLoginPage = request.nextUrl.pathname === '/login';
   const isPublicShare = /^\/(?:courses|schedule)\/share\/[a-f0-9]{32}$/i.test(request.nextUrl.pathname);
+  const isPublicLegal = request.nextUrl.pathname.startsWith('/legal/') || request.nextUrl.pathname === '/offline';
   const token = request.cookies.get(SESSION_COOKIE)?.value;
   const session = token ? verifySessionToken(token) : null;
+  const customSessionValid = session?.provider === 'demo'
+    ? isDemoModeEnabled()
+    : session?.provider === 'kakao'
+      ? await validatePersistedSession(session)
+      : false;
 
-  if (session && isLoginPage) {
+  if (customSessionValid && isLoginPage) {
     return NextResponse.redirect(new URL('/', request.url));
   }
-  if (session) {
+  if (customSessionValid) {
     return NextResponse.next();
   }
-  if (isPublicShare) {
+  if (isPublicShare || isPublicLegal) {
     return NextResponse.next();
   }
 

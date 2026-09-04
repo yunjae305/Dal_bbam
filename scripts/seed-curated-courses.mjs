@@ -77,7 +77,7 @@ let created = 0;
 for (const course of curatedCourses) {
   const resolvedStops = [];
   for (const stop of course.stops) {
-    const place = await findPlace(stop.patterns);
+    const place = await findPlace(stop.patterns, stop.categories);
     if (place) resolvedStops.push({ ...stop, place });
     else process.stdout.write(`  skip stop (no match): ${stop.patterns[0]} — ${course.title}\n`);
   }

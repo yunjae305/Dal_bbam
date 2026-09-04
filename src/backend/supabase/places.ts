@@ -1,5 +1,5 @@
-import { createClient } from '@supabase/supabase-js';
 import { getSupabaseEnv } from '@/backend/supabase/env';
+import { createSupabaseAdminClient } from '@/backend/supabase/admin';
 import { placeCategories, type Lang, type Place, type PlaceCategory } from '@/shared/types';
 
 type PlaceRow = {
@@ -27,6 +27,9 @@ type PlaceRow = {
 };
 
 const DEFAULT_IMAGE = '/login-spring-bg.png';
+// The synced catalogue is several hundred rows; search filters in memory, so
+// a small page silently hides matches.
+export const PLACE_QUERY_LIMIT = 1000;
 const GYEONGJU_CENTER: [number, number] = [35.8562, 129.2247];
 const legacyCategories: Record<string, PlaceCategory> = {
   문화재: 'heritage',
@@ -79,8 +82,8 @@ function mapPlaceRow(row: PlaceRow, lang: Lang): Place {
     description,
     address: row.address || '경주시',
     distance: '경주',
-    rating: 4.7,
-    bestTime: category === 'food' ? '12:30 추천' : '09:00 추천',
+    rating: 0,
+    bestTime: '',
     image: row.image_url || DEFAULT_IMAGE,
     tags: row.tags?.length ? row.tags : [category],
     coordinates: [
@@ -100,15 +103,15 @@ export async function getSupabasePlaces(lang: Lang = 'ko'): Promise<Place[]> {
   const env = getSupabaseEnv();
   if (!env.url || !env.serverKey) return [];
 
-  const supabase = createClient(env.url, env.serverKey, {
-    auth: { persistSession: false, autoRefreshToken: false }
-  });
+  const supabase = createSupabaseAdminClient();
+  if (!supabase) return [];
 
   const { data, error } = await supabase
     .from('places')
     .select('id, content_id, category, name, description, address, lat, lng, image_url, tags, ai_description_ko, ai_description_en, ai_description_zh, ai_description_ja, created_at, place_translations(lang, name, description, overview)')
     .order('created_at', { ascending: false })
-    .limit(100);
+    .order('name', { ascending: true })
+    .limit(PLACE_QUERY_LIMIT);
 
   if (error || !data?.length) return [];
   return data.map(row => mapPlaceRow(row as PlaceRow, lang));

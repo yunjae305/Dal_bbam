@@ -1,19 +1,33 @@
 import { NextRequest } from 'next/server';
-import { apiData, apiError, getUserDataContext, isErrorContext, parseBody } from '@/backend/http';
+import { apiData, apiError, getUserDataContext, isErrorContext, isUuid, parseBody } from '@/backend/http';
 
 type RouteContext = { params: Promise<{ id: string }> };
+
+const postNotFound = () => apiError('POST_NOT_FOUND', '게시물을 찾을 수 없습니다.', 404);
 
 export async function PUT(request: NextRequest, { params }: RouteContext) {
   const context = await getUserDataContext(request);
   if (isErrorContext(context)) return context.response;
   const { id } = await params;
+  if (!isUuid(id)) return postNotFound();
   const body = await parseBody<{ bookmarked?: boolean }>(request);
   if (typeof body?.bookmarked !== 'boolean') return apiError('INVALID_BOOKMARK', 'bookmarked 값이 필요합니다.');
+
+  const { data: post, error: postError } = await context.db
+    .from('community_posts')
+    .select('id')
+    .eq('id', id)
+    .eq('status', 'published')
+    .maybeSingle();
+  if (postError) return apiError('POST_READ_FAILED', '게시물을 확인하지 못했습니다.', 500);
+  if (!post) return postNotFound();
 
   if (body.bookmarked) {
     const { error } = await context.db
       .from('community_bookmarks')
       .upsert({ actor_key: context.user.actorKey, post_id: id }, { onConflict: 'actor_key,post_id' });
+    // 23503: the post vanished between the existence check and the upsert.
+    if (error?.code === '23503') return postNotFound();
     if (error) return apiError('BOOKMARK_SAVE_FAILED', error.message, 500);
   } else {
     const { error } = await context.db
