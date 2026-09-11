@@ -3,12 +3,18 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Bookmark, ChevronLeft, LoaderCircle, MapPin, Pause, Play, Share2, Volume2 } from 'lucide-react';
-import type { Narration, PlaceDetail } from '@/shared/types';
+import type { Lang, Narration, PlaceDetail } from '@/shared/types';
 import { EmptyState } from '@/frontend/components/common/feedback';
 import { useLocale } from '@/frontend/i18n/locale-context';
 import { uiMessages } from '@/shared/ui-messages';
 import { PlaceReviews } from '@/frontend/components/travel/place-reviews';
 import { HeritageInformation } from '@/frontend/components/travel/heritage-information';
+
+const speechLang: Record<Lang, string> = { ko: 'ko-KR', en: 'en-US', ja: 'ja-JP', zh: 'zh-CN' };
+
+function stopSpeech() {
+  if (typeof window !== 'undefined') window.speechSynthesis?.cancel();
+}
 
 export function PlaceDetailScreen({ contentId }: { contentId: string }) {
   const router = useRouter();
@@ -21,6 +27,9 @@ export function PlaceDetailScreen({ contentId }: { contentId: string }) {
   const [playing, setPlaying] = useState(false);
   const [notice, setNotice] = useState('');
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  // Set once the server has no audio for this place and language, so later taps go
+  // straight to the device's speech engine instead of repeating a failing request.
+  const deviceSpeechRef = useRef(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -30,6 +39,8 @@ export function PlaceDetailScreen({ contentId }: { contentId: string }) {
     setNarration(null);
     audioRef.current?.pause();
     audioRef.current = null;
+    deviceSpeechRef.current = false;
+    stopSpeech();
     setPlaying(false);
     fetch(`/api/places/${encodeURIComponent(contentId)}?lang=${locale}`, { cache: 'no-store', signal: controller.signal })
       .then(async response => {
@@ -61,7 +72,10 @@ export function PlaceDetailScreen({ contentId }: { contentId: string }) {
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
   }, [contentId, locale, ui.loadFailed]);
-  useEffect(() => () => audioRef.current?.pause(), []);
+  useEffect(() => () => {
+    audioRef.current?.pause();
+    stopSpeech();
+  }, []);
 
   async function loadNarration() {
     setNarrationLoading(true);
@@ -78,23 +92,50 @@ export function PlaceDetailScreen({ contentId }: { contentId: string }) {
     }
   }
 
+  function speakNarration() {
+    const synth = typeof window === 'undefined' ? undefined : window.speechSynthesis;
+    if (!synth || typeof SpeechSynthesisUtterance === 'undefined' || !narration?.narration) {
+      setPlaying(false);
+      setNotice(ui.audioFailed);
+      return;
+    }
+    synth.cancel();
+    const utterance = new SpeechSynthesisUtterance(narration.narration);
+    utterance.lang = speechLang[locale];
+    utterance.onend = () => setPlaying(false);
+    utterance.onerror = () => {
+      setPlaying(false);
+      setNotice(ui.audioFailed);
+    };
+    setNotice('');
+    setPlaying(true);
+    synth.speak(utterance);
+  }
+
   function playNarration() {
     if (playing) {
       audioRef.current?.pause();
+      stopSpeech();
       setPlaying(false);
+      return;
+    }
+    if (deviceSpeechRef.current) {
+      speakNarration();
       return;
     }
     const audio = audioRef.current ?? new Audio(`/api/ai/narrations/${encodeURIComponent(contentId)}/audio?lang=${locale}`);
     audioRef.current = audio;
     audio.onended = () => setPlaying(false);
-    audio.onerror = () => {
-      setPlaying(false);
-      setNotice(ui.audioFailed);
+    // With OpenAI intentionally off the server has no speech to give (503). Read the
+    // same narration with the device's own speech engine rather than failing.
+    const fallBack = () => {
+      if (deviceSpeechRef.current) return; // onerror and the play() rejection both land here
+      deviceSpeechRef.current = true;
+      audioRef.current = null;
+      speakNarration();
     };
-    audio.play().then(() => setPlaying(true)).catch(() => {
-      setPlaying(false);
-      setNotice(ui.audioFailed);
-    });
+    audio.onerror = fallBack;
+    audio.play().then(() => setPlaying(true)).catch(fallBack);
   }
 
   async function addToCart() {
@@ -142,7 +183,7 @@ export function PlaceDetailScreen({ contentId }: { contentId: string }) {
         <button type="button" onClick={goBack} className="absolute left-4 top-5 grid h-10 w-10 place-items-center rounded-full bg-black/30 text-white backdrop-blur" aria-label={ui.backToMap}><ChevronLeft /></button>
         <button type="button" onClick={share} className="absolute right-4 top-5 grid h-10 w-10 place-items-center rounded-full bg-black/30 text-white backdrop-blur" aria-label={messages.common.share}><Share2 size={18} /></button>
         <div className="absolute inset-x-5 bottom-5 text-white">
-          <p className="text-[10px] font-black">{messages.categories[place.category]} · {place.source}</p>
+          <p className="text-[10px] font-black">{messages.categories[place.category]}</p>
           <h1 className="mt-2 text-3xl font-black">{place.name}</h1>
           <p className="mt-2 flex items-center gap-1 text-[11px] text-white/80"><MapPin size={13} /> {place.address}</p>
         </div>

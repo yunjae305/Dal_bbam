@@ -7,7 +7,7 @@ import { CalendarDays, ChevronDown, ChevronUp, GripVertical, LoaderCircle, Penci
 import type { Place } from '@/shared/types';
 import { PhoneStatus, HeaderBar } from '@/frontend/components/common/ui';
 import { EmptyState } from '@/frontend/components/common/feedback';
-import { dateRange, moveScheduleItem, todayLocalDate } from '@/frontend/schedule-utils';
+import { dateRange, moveScheduleItem, reflowStartTimes, todayLocalDate } from '@/frontend/schedule-utils';
 import { useLocale } from '@/frontend/i18n/locale-context';
 import { uiMessages } from '@/shared/ui-messages';
 import { plannerMessages } from '@/shared/planner-messages';
@@ -162,7 +162,7 @@ export function ItineraryScreen({ places }: Props) {
 
   function dropAt(targetIndex: number) {
     if (saving || dragIndex === null || dragIndex === targetIndex) return;
-    const next = moveScheduleItem(sortedItems, dragIndex, targetIndex);
+    const next = reflowStartTimes(moveScheduleItem(sortedItems, dragIndex, targetIndex));
     setDragIndex(null);
     setSchedules(current => current.map(schedule =>
       schedule.id === active?.id
@@ -205,8 +205,9 @@ export function ItineraryScreen({ places }: Props) {
 
   function moveAt(index: number, targetIndex: number) {
     if (saving) return;
-    const next = moveScheduleItem(sortedItems, index, targetIndex);
-    if (next === sortedItems) return;
+    const moved = moveScheduleItem(sortedItems, index, targetIndex);
+    if (moved === sortedItems) return;
+    const next = reflowStartTimes(moved);
     setSchedules(current => current.map(schedule =>
       schedule.id === active?.id
         ? { ...schedule, schedule_places: next.map((item, sortOrder) => ({ ...item, sort_order: sortOrder })) }

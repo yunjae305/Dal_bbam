@@ -1,6 +1,7 @@
 import { getSupabaseEnv } from '@/backend/supabase/env';
 import { createSupabaseAdminClient } from '@/backend/supabase/admin';
 import { placeCategories, type Lang, type Place, type PlaceCategory } from '@/shared/types';
+import { withoutSampleSlugs } from '@/shared/tour-content-id';
 
 type PlaceRow = {
   id: string;
@@ -114,5 +115,5 @@ export async function getSupabasePlaces(lang: Lang = 'ko'): Promise<Place[]> {
     .limit(PLACE_QUERY_LIMIT);
 
   if (error || !data?.length) return [];
-  return data.map(row => mapPlaceRow(row as PlaceRow, lang));
+  return withoutSampleSlugs(data as PlaceRow[], row => String(row.content_id)).map(row => mapPlaceRow(row, lang));
 }

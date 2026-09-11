@@ -23,6 +23,16 @@ describe('default stamp catalogue seed', () => {
     expect(defaultStampContentIds([])).toEqual([]);
   });
 
+  it('prefers TourAPI rows over leftover sample slugs with the same landmark', () => {
+    const ids = defaultStampContentIds([
+      place('bulguksa', '불국사', 'heritage', 35.7901, 129.332),
+      place('126166', '경주 불국사 [유네스코 세계유산]', 'attraction', 35.7899, 129.3319),
+      place('donggung-wolji', '동궁과 월지', 'heritage', 35.8347, 129.2266),
+      place('128526', '경주 동궁과 월지', 'attraction', 35.8349, 129.2267)
+    ]);
+    expect(ids).toEqual(['126166', '128526']);
+  });
+
   it('uses real heritage fallbacks when named landmarks are absent', () => {
     expect(defaultStampContentIds([place('h2', '나 유적', 'heritage'), place('h1', '가 유적', 'heritage')])).toEqual(['h1', 'h2']);
   });

@@ -15,6 +15,28 @@ export function moveScheduleItem<T>(items: T[], from: number, to: number): T[] {
   return next;
 }
 
+/**
+ * Moving a stop changes its position, not its clock time, so a stop at 10:04 could end
+ * up listed above one at 09:00. Within each day, the day's existing times are handed back
+ * out in the new order: the day keeps its shape and the times read top to bottom.
+ * Stops without a time are left alone.
+ */
+export function reflowStartTimes<T extends { visit_date: string; start_time?: string | null }>(items: T[]): T[] {
+  const slots = new Map<string, string[]>();
+  for (const item of items) {
+    if (!item.start_time) continue;
+    const day = slots.get(item.visit_date) ?? [];
+    day.push(item.start_time);
+    slots.set(item.visit_date, day);
+  }
+  for (const times of slots.values()) times.sort();
+  return items.map(item => {
+    if (!item.start_time) return item;
+    const next = slots.get(item.visit_date)?.shift() ?? item.start_time;
+    return next === item.start_time ? item : { ...item, start_time: next };
+  });
+}
+
 export function dateRange(startDate: string, endDate: string, maxDays = 366): string[] {
   const start = new Date(`${startDate}T00:00:00Z`);
   const end = new Date(`${endDate}T00:00:00Z`);

@@ -36,6 +36,24 @@ describe('getStampThemeProgress', () => {
     expect(progress[0].theme.id).toBe('nature');
   });
 
+  it('counts attraction landmarks toward the history theme', () => {
+    // 첨성대 and 대릉원 arrive from TourAPI as attractions, not heritage.
+    const progress = getStampThemeProgress(
+      [place('cheomseongdae', 'attraction'), place('bulguksa', 'heritage'), place('daereungwon', 'attraction')],
+      new Set(['cheomseongdae'])
+    );
+    expect(progress).toHaveLength(1);
+    expect(progress[0].theme.id).toBe('history');
+    expect(progress[0]).toMatchObject({ total: 3, acquired: 1, completed: false });
+  });
+
+  it('places every category the stamp seed can pick into some theme', () => {
+    const seeded: PlaceCategory[] = ['heritage', 'attraction', 'food', 'nature'];
+    const progress = getStampThemeProgress(seeded.map(category => place(category, category)), new Set());
+    const grouped = progress.reduce((sum, item) => sum + item.total, 0);
+    expect(grouped).toBe(seeded.length);
+  });
+
   it('never marks an empty selection as completed', () => {
     const progress = getStampThemeProgress(
       [place('h1', 'heritage'), place('h2', 'heritage')],

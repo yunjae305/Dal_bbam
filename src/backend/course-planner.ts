@@ -2,6 +2,8 @@ import { distanceMeters } from '@/backend/geo';
 import { generateStructured, isOpenAiAvailable } from '@/backend/openai';
 import { resolveDirections } from '@/backend/kakao-directions';
 import { courseLegKey, timeCourseStops, type CourseLeg } from '@/backend/course-timing';
+import { GYEONGJU_CENTER } from '@/backend/kakao-map';
+import { gyeongjuLandmarkNames } from '@/shared/stamp-seed';
 import type {
   CoursePlan,
   CourseRequest,
@@ -49,13 +51,46 @@ function desiredStopCount(request: CourseRequest, candidates: PlaceSummary[]): n
   return Math.min(candidates.length, Math.max(1, request.days * perDay), 12);
 }
 
+function isLandmark(place: PlaceSummary): boolean {
+  return gyeongjuLandmarkNames.some(name => place.name.includes(name));
+}
+
+/**
+ * TourAPI files 첨성대 and 대릉원 as attractions, yet anyone asking for heritage in
+ * Gyeongju expects them, so landmarks count as a heritage match whatever their category.
+ */
+function matchesInterest(place: PlaceSummary, request: CourseRequest): boolean {
+  return request.interests.includes(place.category) ||
+    (request.interests.includes('heritage') && isLandmark(place));
+}
+
 function interestScore(place: PlaceSummary, request: CourseRequest): number {
-  const categoryScore = request.interests.includes(place.category) ? 10 : 0;
+  const categoryScore = matchesInterest(place, request) ? 10 : 0;
   const purpose = request.purpose?.toLowerCase() ?? '';
   const text = [place.name, place.description, ...place.tags].join(' ').toLowerCase();
   const purposeScore = purpose && text.includes(purpose) ? 4 : 0;
+  // Database places carry no rating (tour-mvp-data sets 0), so without this every
+  // heritage candidate tied and the plan followed input order.
+  const landmarkScore = isLandmark(place) ? 3 : 0;
   const ratingScore = place.rating ?? 0;
-  return categoryScore + purposeScore + ratingScore;
+  return categoryScore + purposeScore + landmarkScore + ratingScore;
+}
+
+// Downtown's heritage core (첨성대, 대릉원, 월정교, 박물관) lies within 3 km of the centre;
+// 불국사 is 11 km out, which a walking day turned into a 3-hour-plus leg.
+const WALKING_REACH_METERS = 4000;
+
+function withinWalkingReach(candidates: PlaceSummary[], request: CourseRequest): PlaceSummary[] {
+  if (request.transport !== 'walking') return candidates;
+  const near = candidates.filter(place =>
+    distanceMeters(GYEONGJU_CENTER, { lat: place.coordinates[0], lng: place.coordinates[1] }) <= WALKING_REACH_METERS);
+  return near.length ? near : candidates;
+}
+
+/** "국립경주박물관 신라천년서고" sits inside "국립경주박물관": one visit, not two stops. */
+function isPartOf(place: PlaceSummary, chosen: PlaceSummary): boolean {
+  const [shorter, longer] = place.name.length <= chosen.name.length ? [place.name, chosen.name] : [chosen.name, place.name];
+  return shorter.length >= 3 && longer.includes(shorter);
 }
 
 export function orderStopsByDistance(
@@ -66,7 +101,7 @@ export function orderStopsByDistance(
   const byId = new Map(candidates.map(place => [place.contentId, place]));
   const remaining = [...stops];
   const ordered: CourseStop[] = [];
-  let current = { lat: 35.8562, lng: 129.2247 };
+  let current = { ...GYEONGJU_CENTER };
 
   while (remaining.length) {
     remaining.sort((a, b) => {
@@ -115,13 +150,41 @@ export function deterministicCoursePlan(
     ja: { title: 'あなたに合った慶州旅行', suffix: '慶州旅行', match: '選択した興味に合った場所です。', other: '移動経路と旅行ペースを考慮しました。', summary: `興味に合わせた${request.days}日間の旅行コースです。` },
     zh: { title: '为您定制的庆州之旅', suffix: '庆州之旅', match: '根据您的兴趣选择的地点。', other: '综合考虑路线和旅行节奏。', summary: `根据您的兴趣安排的${request.days}天旅行路线。` }
   }[request.lang];
-  const selected = [...candidates]
-    .sort((a, b) => interestScore(b, request) - interestScore(a, request))
-    .slice(0, desiredStopCount(request, candidates));
+  const pool = withinWalkingReach(candidates, request);
+  const ranked = [...pool].sort((a, b) =>
+    interestScore(b, request) - interestScore(a, request) ||
+    a.name.length - b.name.length || // the main site ahead of its sub-facilities
+    a.name.localeCompare(b.name, 'ko'));
+  const limit = desiredStopCount(request, pool);
+  const selected: PlaceSummary[] = [];
+  const take = (place: PlaceSummary): boolean => {
+    if (selected.length >= limit || selected.includes(place) || selected.some(chosen => isPartOf(place, chosen))) return false;
+    selected.push(place);
+    return true;
+  };
+  // With several interests, take turns between them. Otherwise the landmark bonus let
+  // heritage fill every slot of a "heritage + food" trip and no restaurant ever appeared.
+  if (request.interests.length > 1) {
+    const queues = request.interests.map(interest =>
+      ranked.filter(place => place.category === interest || (interest === 'heritage' && isLandmark(place))));
+    let progressed = true;
+    while (selected.length < limit && progressed) {
+      progressed = false;
+      for (const queue of queues) {
+        while (queue.length) {
+          if (take(queue.shift() as PlaceSummary)) { progressed = true; break; }
+        }
+      }
+    }
+  }
+  for (const place of ranked) {
+    if (selected.length >= limit) break;
+    take(place);
+  }
   const stops = selected.map((place, index): CourseStop => ({
     contentId: place.contentId,
     order: index,
-    reason: request.interests.includes(place.category)
+    reason: matchesInterest(place, request)
       ? copy.match
       : copy.other,
     stayMinutes: request.pace === 'relaxed' ? 90 : request.pace === 'packed' ? 45 : 60,

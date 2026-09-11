@@ -1,11 +1,35 @@
 import { describe, expect, it } from 'vitest';
-import { addDateDays, dateRange, moveScheduleItem } from '@/frontend/schedule-utils';
+import { addDateDays, dateRange, moveScheduleItem, reflowStartTimes } from '@/frontend/schedule-utils';
 
 describe('mobile schedule ordering', () => {
   it('moves an item without mutating the current list', () => {
     const current = ['a', 'b', 'c'];
     expect(moveScheduleItem(current, 2, 0)).toEqual(['c', 'a', 'b']);
     expect(current).toEqual(['a', 'b', 'c']);
+  });
+
+  it('keeps times reading top to bottom after a stop moves', () => {
+    const day = [
+      { name: '대릉원', visit_date: '2026-09-20', start_time: '09:00' },
+      { name: '천마총', visit_date: '2026-09-20', start_time: '10:04' },
+      { name: '첨성대', visit_date: '2026-09-20', start_time: '11:13' },
+      { name: '교촌마을', visit_date: '2026-09-21', start_time: '09:00' }
+    ];
+    const moved = reflowStartTimes(moveScheduleItem(day, 0, 1));
+    expect(moved.map(item => `${item.name} ${item.start_time}`)).toEqual([
+      '천마총 09:00', '대릉원 10:04', '첨성대 11:13', '교촌마을 09:00'
+    ]);
+  });
+
+  it('leaves untimed stops and unchanged items alone', () => {
+    const items = [
+      { visit_date: '2026-09-20', start_time: '09:00' },
+      { visit_date: '2026-09-20', start_time: null },
+      { visit_date: '2026-09-20', start_time: '11:00' }
+    ];
+    const result = reflowStartTimes(items);
+    expect(result[1].start_time).toBeNull();
+    expect(result[0]).toBe(items[0]);
   });
 
   it('supports long trips and rejects calendar rollover dates', () => {

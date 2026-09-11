@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Bookmark, Check, LoaderCircle, Map as MapIcon, Share2, Sparkles } from 'lucide-react';
+import { Bookmark, Check, LoaderCircle, Map as MapIcon, Share2, Sparkles, Trash2 } from 'lucide-react';
 import type {
   CoursePlan,
   CourseRequest,
@@ -14,6 +14,7 @@ import { PhoneStatus, HeaderBar } from '@/frontend/components/common/ui';
 import { useLocale } from '@/frontend/i18n/locale-context';
 import { uiMessages } from '@/shared/ui-messages';
 import { plannerMessages } from '@/shared/planner-messages';
+import { localizeCuratedCourse } from '@/shared/curated-course-copy';
 import { addDateDays, todayLocalDate } from '@/frontend/schedule-utils';
 import { CourseRouteMap } from '@/frontend/components/travel/course-route-map';
 
@@ -71,6 +72,7 @@ export function AiCourseScreen({ places }: Props) {
   const [scheduleId, setScheduleId] = useState('');
   const [theme, setTheme] = useState<PlaceCategory | 'all'>('all');
   const [showMap, setShowMap] = useState(false);
+  const [deletingId, setDeletingId] = useState('');
 
   const byId = useMemo(() => new Map(places.map(place => [place.contentId, place])), [places]);
 
@@ -200,6 +202,22 @@ export function AiCourseScreen({ places }: Props) {
 
   function sharePlan() {
     return shareCourse(shareToken, plan?.title, plan?.summary);
+  }
+
+  // Saved courses had a share button but no way to remove them.
+  async function deleteCourse(course: CuratedCourse) {
+    if (!window.confirm(ui.deleteCourseConfirm.replace('{title}', course.title))) return;
+    setDeletingId(course.id);
+    setError('');
+    try {
+      const response = await fetch(`/api/courses/${encodeURIComponent(course.id)}`, { method: 'DELETE' });
+      if (!response.ok) throw new Error();
+      setMyCourses(current => current.filter(item => item.id !== course.id));
+    } catch {
+      setError(ui.deleteCourseFailed);
+    } finally {
+      setDeletingId('');
+    }
   }
 
   return (
@@ -341,11 +359,16 @@ export function AiCourseScreen({ places }: Props) {
                           {stops.map(stop => stop.places?.name ?? ui.deletedPlace).join(' → ')}
                         </p>
                       </div>
-                      {course.share_token && (
-                        <button type="button" onClick={() => void shareCourse(course.share_token ?? '', course.title, course.description)} className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#eef3ee] text-[#2f7567]" aria-label={ui.shareLabel}>
-                          <Share2 size={16} />
+                      <div className="flex shrink-0 gap-2">
+                        {course.share_token && (
+                          <button type="button" onClick={() => void shareCourse(course.share_token ?? '', course.title, course.description)} className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#eef3ee] text-[#2f7567]" aria-label={ui.shareLabel}>
+                            <Share2 size={16} />
+                          </button>
+                        )}
+                        <button type="button" onClick={() => void deleteCourse(course)} disabled={deletingId === course.id} className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-red-50 text-red-700 disabled:opacity-50" aria-label={ui.deleteCourseLabel.replace('{title}', course.title)}>
+                          {deletingId === course.id ? <LoaderCircle size={15} className="animate-spin" /> : <Trash2 size={15} />}
                         </button>
-                      )}
+                      </div>
                     </div>
                   </article>
                 );
@@ -360,7 +383,8 @@ export function AiCourseScreen({ places }: Props) {
             <p className="mt-1 text-[10px] font-bold text-[#8d95a1]">{ui.curatedDescription}</p>
             <label className="mt-3 block text-[10px] font-bold">{planner.theme}<select value={theme} onChange={event => setTheme(event.target.value as PlaceCategory | 'all')} className="ml-2 min-h-11 rounded-xl bg-white px-3"><option value="all">{planner.themeAll}</option>{categories.map(category => <option key={category} value={category}>{messages.categories[category]}</option>)}</select></label>
             <div className="mt-3 space-y-4">
-              {curated.filter(course => theme === 'all' || course.metadata?.theme === theme).map(course => {
+              {curated.filter(course => theme === 'all' || course.metadata?.theme === theme).map(original => {
+                const course = localizeCuratedCourse(original, locale);
                 const stops = [...(course.course_places ?? [])].sort((a, b) => a.order_index - b.order_index);
                 return (
                   <article key={course.id} className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-black/5">

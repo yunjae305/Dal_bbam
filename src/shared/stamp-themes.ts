@@ -13,7 +13,10 @@ export type StampTheme = {
 export const stampThemes: StampTheme[] = [
   {
     id: 'history',
-    categories: ['heritage'],
+    // TourAPI files 첨성대·대릉원·월정교 as 관광지 (attraction), and stamp-seed.ts picks the
+    // history landmarks from heritage and attraction alike. Matching only heritage left
+    // those landmarks outside every course.
+    categories: ['heritage', 'attraction'],
     name: { ko: '역사 코스', en: 'History route', ja: '歴史コース', zh: '历史路线' },
     description: {
       ko: '신라 천년의 문화유산을 따라 걷는 코스',

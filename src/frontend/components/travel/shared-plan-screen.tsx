@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { Clock, LoaderCircle, MapPin } from 'lucide-react';
 import { EmptyState } from '@/frontend/components/common/feedback';
 import { useLocale } from '@/frontend/i18n/locale-context';
+import { localizeCuratedCourse } from '@/shared/curated-course-copy';
 import { uiMessages } from '@/shared/ui-messages';
 
 type SharedPlace = {
@@ -53,14 +54,16 @@ export function SharedPlanScreen({ kind, token }: { kind: 'course' | 'schedule';
   if (error) return <div className="p-5"><EmptyState title={ui.cannotOpen} description={error} /></div>;
   if (!data) return <div className="grid min-h-[60dvh] place-items-center"><LoaderCircle className="animate-spin" /></div>;
 
-  const items = [...(data.course_places ?? data.schedule_places ?? [])].sort((a, b) =>
+  // Seeded curated courses carry translations; everything else renders as written.
+  const shown = kind === 'course' ? localizeCuratedCourse(data, locale) : data;
+  const items = [...(shown.course_places ?? shown.schedule_places ?? [])].sort((a, b) =>
     (a.order_index ?? a.sort_order ?? 0) - (b.order_index ?? b.sort_order ?? 0)
   );
   return (
     <section className="mx-auto max-w-[700px] px-5 py-8">
       <p className="text-[10px] font-black text-[#ff5b4f]">{kind === 'course' ? ui.sharedCourse : ui.sharedSchedule}</p>
-      <h1 className="mt-2 text-2xl font-black">{data.title}</h1>
-      {data.description && <p className="mt-3 text-[12px] leading-6 text-[#68716e]">{data.description}</p>}
+      <h1 className="mt-2 text-2xl font-black">{shown.title}</h1>
+      {shown.description && <p className="mt-3 text-[12px] leading-6 text-[#68716e]">{shown.description}</p>}
       {data.start_date && <p className="mt-2 text-[10px] font-bold text-[#7d8582]">{data.start_date} ~ {data.end_date}</p>}
       <ol className="mt-6 space-y-3">
         {items.map((item, index) => (

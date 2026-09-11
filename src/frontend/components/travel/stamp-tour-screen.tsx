@@ -20,6 +20,7 @@ import type { Badge, Place, PlaceCategory } from '@/shared/types';
 import { placeCategories } from '@/shared/types';
 import { getStampThemeProgress, type StampThemeId } from '@/shared/stamp-themes';
 import { Metric } from '@/frontend/components/common/ui';
+import { formatDistance } from '@/shared/format-distance';
 import { readLocationConsent, saveLocationConsent } from '@/frontend/location-consent';
 import { acquirePosition, GeolocationAcquireError, type PositionSample } from '@/frontend/geolocation';
 import { useLocale } from '@/frontend/i18n/locale-context';
@@ -588,7 +589,7 @@ export function StampTourScreen({ places, onExplore, onBack }: Props) {
                   {lastFix && (
                     <p className="mt-1 text-pretty text-[8px] leading-3 text-[#8c929c]">
                       {ui.distanceHint
-                        .replace('{distance}', String(Math.round(haversineMeters(lastFix, { lat: place.coordinates[0], lng: place.coordinates[1] }))))
+                        .replace('{distance}', formatDistance(haversineMeters(lastFix, { lat: place.coordinates[0], lng: place.coordinates[1] })))
                         .replace('{radius}', String(target?.radiusMeters ?? 150))}
                     </p>
                   )}

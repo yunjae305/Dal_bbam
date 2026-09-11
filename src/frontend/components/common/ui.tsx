@@ -2,18 +2,14 @@
 
 import React from 'react';
 
-export function PhoneStatus({ dark = false }: { dark?: boolean }) {
-  return (
-    <div className={`flex h-7 items-center justify-between px-5 text-[10px] font-bold ${dark ? 'text-white' : 'text-black'}`}>
-      <span>16:04</span>
-      <span className="flex items-center gap-1">
-        <span className={`h-2 w-4 rounded-sm border ${dark ? 'border-white' : 'border-black'}`} />
-        <span className={`h-2 w-3 rounded-sm ${dark ? 'bg-white' : 'bg-black'}`} />
-        <span className={`h-2 w-2 rounded-full ${dark ? 'bg-white' : 'bg-black'}`} />
-      </span>
-    </div>
-  );
-}
+/**
+ * Keeps the top spacing the mockup's phone status bar used to occupy. The mockup drew a
+ * fixed "16:04" clock and fake battery icons, which on a real phone sat right under the
+ * OS status bar showing the wrong time. The real device already draws that bar.
+ */
+export const PhoneStatus: (props: { dark?: boolean }) => React.JSX.Element = () => (
+  <div aria-hidden="true" className="h-7" />
+);
 
 export function HeaderBar({ title, subtitle, left, right }: { title: string; subtitle?: string; left?: React.ReactNode; right?: React.ReactNode }) {
   return (

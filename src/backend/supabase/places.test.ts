@@ -27,15 +27,17 @@ describe('normalizePlaceCategory', () => {
 describe('getSupabasePlaces', () => {
   const order = vi.fn();
   const limit = vi.fn();
+  let rows: Array<Record<string, unknown>> = [];
 
   beforeEach(() => {
     vi.clearAllMocks();
     vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://example.supabase.co');
     vi.stubEnv('SUPABASE_SECRET_KEY', 'secret');
+    rows = [{ id: 'row-1', content_id: '100', category: 'heritage', name: '첨성대', lat: 35.83, lng: 129.21 }];
     const chain: Record<string, unknown> = {
       then(resolve: (value: unknown) => unknown, reject?: (reason: unknown) => unknown) {
         return Promise.resolve({
-          data: [{ id: 'row-1', content_id: '100', category: 'heritage', name: '첨성대', lat: 35.83, lng: 129.21 }],
+          data: rows,
           error: null
         }).then(resolve, reject);
       }
@@ -48,6 +50,15 @@ describe('getSupabasePlaces', () => {
 
   afterEach(() => {
     vi.unstubAllEnvs();
+  });
+
+  it('drops leftover sample slug rows that duplicate real TourAPI places', async () => {
+    rows = [
+      { id: 'row-1', content_id: '126166', category: 'attraction', name: '경주 불국사 [유네스코 세계유산]', lat: 35.79, lng: 129.33 },
+      { id: 'row-2', content_id: 'bulguksa', category: 'heritage', name: '불국사', lat: 35.79, lng: 129.33 }
+    ];
+    const places = await getSupabasePlaces('ko');
+    expect(places.map(place => place.contentId)).toEqual(['126166']);
   });
 
   it('reads the whole catalogue with a deterministic order so in-memory search sees every row', async () => {

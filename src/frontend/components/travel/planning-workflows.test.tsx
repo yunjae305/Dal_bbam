@@ -24,6 +24,23 @@ const response = (data: unknown, ok = true) => ({ ok, json: async () => ok ? { d
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe('course, itinerary and cart user flows', () => {
+  it('lets a traveler delete a saved course after confirming', async () => {
+    const saved = { id: 'course-1', title: '나에게 맞춘 경주 여행', description: null, transport: 'walking', is_curated: false, share_token: 'tok', course_places: [] };
+    const fetcher = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === '/api/courses' && !init?.method) return response([saved]);
+      if (url === '/api/courses/course-1' && init?.method === 'DELETE') return response({ deleted: true });
+      return response([]);
+    });
+    vi.stubGlobal('fetch', fetcher);
+    vi.stubGlobal('confirm', vi.fn(() => true));
+    render(<AiCourseScreen places={places} />);
+    const remove = await screen.findByRole('button', { name: uiMessages.ko.course.deleteCourseLabel.replace('{title}', saved.title) });
+    fireEvent.click(remove);
+    await waitFor(() => expect(screen.queryByText(saved.title)).not.toBeInTheDocument());
+    expect(fetcher).toHaveBeenCalledWith('/api/courses/course-1', { method: 'DELETE' });
+  });
+
+
   it('creates a dated itinerary from the generated course and keeps every day and start time', async () => {
     const plan: CoursePlan = { title: 'Two-day trip', summary: 'History and food', generatedBy: 'fallback', transport: 'walking', totalDistanceMeters: 0, estimatedMinutes: 120, days: 2, timingSource: 'estimated', stops: [
       { contentId: 'place-0', order: 0, reason: 'History', stayMinutes: 60, dayIndex: 0, startTime: '09:00', endTime: '10:00' },

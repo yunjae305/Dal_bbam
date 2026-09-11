@@ -25,6 +25,7 @@ import {
 import { MapPattern } from '@/frontend/components/common/ui';
 import { useLocale } from '@/frontend/i18n/locale-context';
 import { readLocationConsent, saveLocationConsent } from '@/frontend/location-consent';
+import { formatDistance } from '@/shared/format-distance';
 
 type KakaoLatLng = object;
 type KakaoLatLngPoint = {
@@ -186,10 +187,6 @@ export function formatRouteDuration(
     : templates.durationMinutes.replace('{m}', String(totalMinutes));
 }
 
-function formatDistance(meters: number): string {
-  return meters >= 1000 ? `${(meters / 1000).toFixed(1)}km` : `${Math.max(1, Math.round(meters))}m`;
-}
-
 function pickDefaultMode(results: DirectionResult[]): DirectionMode | null {
   if (!results.length) return null;
   const preferred = results.filter(result => !isFallbackDirection(result));
@@ -222,6 +219,7 @@ export function KakaoMapExplorer({
   const lastSelectedIdRef = useRef<string | null>(null);
   const pickingRef = useRef<RouteEndpoint | null>(null);
   const locationTargetRef = useRef<RouteEndpoint | null>(null);
+  const locateOnArrivalRef = useRef(false);
   const markersRef = useRef<Array<{ marker: KakaoMarker; click: () => void }>>([]);
   const clustererRef = useRef<KakaoMarkerClusterer | null>(null);
   const polylineRef = useRef<KakaoPolyline | null>(null);
@@ -302,7 +300,10 @@ export function KakaoMapExplorer({
 
   useEffect(() => {
     readLocationConsent()
-      .then(setConsent)
+      .then(granted => {
+        locateOnArrivalRef.current = granted === true;
+        setConsent(granted);
+      })
       .catch(() => setConsent(null));
   }, []);
 
@@ -640,6 +641,20 @@ export function KakaoMapExplorer({
       maximumAge: 30000
     });
   }, [consent, loadNearby, recordConsent]);
+
+  // First-time visitors get their origin filled right after the consent dialog. Returning
+  // visitors skipped the dialog and were left with no origin until they found the locate
+  // button. Locate once on arrival, but only when the browser still holds its grant, so
+  // opening the map never springs a permission prompt on anyone.
+  useEffect(() => {
+    if (consent !== true || !locateOnArrivalRef.current) return;
+    locateOnArrivalRef.current = false;
+    const permissions = typeof navigator === 'undefined' ? undefined : navigator.permissions;
+    if (!permissions?.query) return;
+    permissions.query({ name: 'geolocation' as PermissionName })
+      .then(status => { if (status.state === 'granted') void requestLocation(); })
+      .catch(() => {});
+  }, [consent, requestLocation]);
 
   const applyCurrentLocationTo = useCallback((endpoint: RouteEndpoint) => {
     if (location) {

@@ -120,6 +120,13 @@ function installKakaoMock() {
   return { map, maps, event, markerInstances, polylineInstances, listeners };
 }
 
+function installPermission(state: PermissionState) {
+  Object.defineProperty(navigator, 'permissions', {
+    configurable: true,
+    value: { query: vi.fn().mockResolvedValue({ state }) }
+  });
+}
+
 function installGeolocation(read: () => { latitude: number; longitude: number }) {
   Object.defineProperty(navigator, 'geolocation', {
     configurable: true,
@@ -145,6 +152,7 @@ describe('KakaoMapExplorer route state', () => {
     vi.unstubAllGlobals();
     vi.clearAllMocks();
     delete window.kakao;
+    Reflect.deleteProperty(navigator, 'permissions');
   });
 
   it('never substitutes a fixed Gyeongju origin when GPS is unavailable', async () => {
@@ -182,6 +190,37 @@ describe('KakaoMapExplorer route state', () => {
     fireEvent.click(screen.getByRole('button', { name: /대중교통/ }));
     expect(await screen.findByText(/환승 1회 · 요금 1,450원/)).toBeVisible();
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('fills the origin on arrival for a returning visitor whose browser kept the grant', async () => {
+    installKakaoMock();
+    vi.mocked(readLocationConsent).mockResolvedValue(true);
+    installGeolocation(() => ({ latitude: 35.8347, longitude: 129.219 }));
+    installPermission('granted');
+    fetchMock.mockResolvedValue({ ok: true, json: async () => comparisonPayload() });
+
+    render(<KakaoMapExplorer places={[firstPlace]} selectedPlace={firstPlace} onSelect={vi.fn()} />);
+
+    // No tap on the locate button: the route request already carries the GPS origin.
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    const url = new URL(String(fetchMock.mock.calls[0]?.[0]), 'http://localhost');
+    expect(url.searchParams.get('originLat')).toBe('35.8347');
+    expect(url.searchParams.get('destinationName')).toBe('첨성대');
+  });
+
+  it('waits for a tap instead of prompting when the browser has not kept the grant', async () => {
+    installKakaoMock();
+    vi.mocked(readLocationConsent).mockResolvedValue(true);
+    const getCurrentPosition = vi.fn();
+    Object.defineProperty(navigator, 'geolocation', { configurable: true, value: { getCurrentPosition } });
+    installPermission('prompt');
+
+    render(<KakaoMapExplorer places={[firstPlace]} selectedPlace={firstPlace} onSelect={vi.fn()} />);
+    await screen.findByRole('button', { name: '현재 위치' });
+    await new Promise(resolve => setTimeout(resolve, 20));
+
+    expect(getCurrentPosition).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('lets the user pick an origin from the map and swap the endpoints', async () => {
