@@ -1,0 +1,52 @@
+{
+  "sceneId": "scene-02",
+  "canvas": { "width": 1080, "height": 1920 },
+  "storyBasis": "단정한 석가탑과 화려한 다보탑이 마주 선 절에 임진왜란의 불길이 닿아 목조 건물은 타 없어지고, 석축 기단과 두 탑만 남아 오늘의 불국사로 이어진다.",
+  "sceneDurationMs": 30000,
+  "elements": [
+    {
+      "id": "contrast",
+      "label": "석가탑과 다보탑의 대비",
+      "sequence": 1,
+      "narrativeRole": "장면 설정 — 두 탑의 성격 차이를 먼저 세운다",
+      "subtitle": "석가탑은 깎아낸 듯 단정하고, 다보탑은 화려하게 솟아오릅니다.",
+      "type": "structure",
+      "region": { "x": 248, "y": 222, "width": 590, "height": 282 },
+      "reveal": { "direction": "bottom_to_top", "startMs": 300, "durationMs": 6900, "maskPaddingPx": 20, "protectedRegions": [] },
+      "handPath": { "start": [350, 492], "end": [742, 240], "easing": "easeInOut" }
+    },
+    {
+      "id": "burning",
+      "label": "불길에 휩싸인 목조 건물",
+      "sequence": 2,
+      "narrativeRole": "변화와 갈등 — 이야기가 꺾이는 지점",
+      "subtitle": "임진왜란의 불길에 목조 건물은 모두 타버렸습니다.",
+      "type": "structure",
+      "region": { "x": 254, "y": 640, "width": 572, "height": 364 },
+      "reveal": { "direction": "bottom_to_top", "startMs": 7500, "durationMs": 7000, "maskPaddingPx": 20, "protectedRegions": [] },
+      "handPath": { "start": [300, 990], "end": [540, 654], "easing": "easeInOut" }
+    },
+    {
+      "id": "survived",
+      "label": "남은 석축 기단과 두 탑",
+      "sequence": 3,
+      "narrativeRole": "반전 — 사라진 것과 남은 것을 가른다",
+      "subtitle": "그러나 돌로 쌓은 기단과 두 탑은 끝내 자리를 지켰습니다.",
+      "type": "structure",
+      "region": { "x": 274, "y": 1250, "width": 532, "height": 232 },
+      "reveal": { "direction": "bottom_to_top", "startMs": 15000, "durationMs": 7000, "maskPaddingPx": 20, "protectedRegions": [] },
+      "handPath": { "start": [286, 1470], "end": [672, 1262], "easing": "easeInOut" }
+    },
+    {
+      "id": "restored",
+      "label": "다시 선 불국사 전경",
+      "sequence": 4,
+      "narrativeRole": "맺음 — 지금도 서 있다는 결론",
+      "subtitle": "1995년 세계유산이 된 불국사가, 지금도 당신을 기다립니다.",
+      "type": "structure",
+      "region": { "x": 140, "y": 1686, "width": 800, "height": 190 },
+      "reveal": { "direction": "left_to_right", "startMs": 22500, "durationMs": 7000, "maskPaddingPx": 20, "protectedRegions": [] },
+      "handPath": { "start": [150, 1860], "end": [930, 1700], "easing": "easeInOut" }
+    }
+  ]
+}

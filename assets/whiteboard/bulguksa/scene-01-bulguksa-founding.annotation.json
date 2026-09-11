@@ -1,0 +1,52 @@
+{
+  "sceneId": "scene-01",
+  "canvas": { "width": 1080, "height": 1920 },
+  "storyBasis": "토함산 자락에 김대성이 불국사를 세우고, 청운교와 백운교를 올라선 마당에 석가탑과 다보탑이 마주 선다.",
+  "sceneDurationMs": 30000,
+  "elements": [
+    {
+      "id": "mountain",
+      "label": "토함산 능선과 절 지붕",
+      "sequence": 1,
+      "narrativeRole": "장면 설정 — 절이 놓인 자리를 먼저 보여 준다",
+      "subtitle": "경주 토함산 자락에, 천 년을 서 있는 절이 있습니다.",
+      "type": "structure",
+      "region": { "x": 50, "y": 96, "width": 985, "height": 414 },
+      "reveal": { "direction": "top_to_bottom", "startMs": 300, "durationMs": 6900, "maskPaddingPx": 20, "protectedRegions": [] },
+      "handPath": { "start": [60, 400], "end": [1020, 455], "easing": "easeInOut" }
+    },
+    {
+      "id": "founder",
+      "label": "절을 세운 김대성",
+      "sequence": 2,
+      "narrativeRole": "핵심 인물 — 누가 세웠는지를 밝힌다",
+      "subtitle": "신라 경덕왕 때 재상 김대성이 부모를 기리며 불국사를 세웠습니다.",
+      "type": "character",
+      "region": { "x": 414, "y": 538, "width": 252, "height": 424 },
+      "reveal": { "direction": "top_to_bottom", "startMs": 7500, "durationMs": 7000, "maskPaddingPx": 20, "protectedRegions": [] },
+      "handPath": { "start": [540, 548], "end": [540, 950], "easing": "easeInOut" }
+    },
+    {
+      "id": "stairs",
+      "label": "청운교와 백운교",
+      "sequence": 3,
+      "narrativeRole": "공간 진입 — 문턱을 넘어 들어서는 동작",
+      "subtitle": "청운교와 백운교를 오르면, 부처의 나라로 들어섭니다.",
+      "type": "structure",
+      "region": { "x": 342, "y": 1048, "width": 500, "height": 432 },
+      "reveal": { "direction": "bottom_to_top", "startMs": 15000, "durationMs": 7000, "maskPaddingPx": 20, "protectedRegions": [] },
+      "handPath": { "start": [360, 1460], "end": [740, 1060], "easing": "easeInOut" }
+    },
+    {
+      "id": "pagodas",
+      "label": "마주 선 석가탑과 다보탑",
+      "sequence": 4,
+      "narrativeRole": "도착점 — 이 장면이 데려다 놓는 결과",
+      "subtitle": "마당에는 석가탑과 다보탑이 천 년째 마주 서 있습니다.",
+      "type": "structure",
+      "region": { "x": 250, "y": 1536, "width": 582, "height": 344 },
+      "reveal": { "direction": "bottom_to_top", "startMs": 22500, "durationMs": 7000, "maskPaddingPx": 20, "protectedRegions": [] },
+      "handPath": { "start": [360, 1870], "end": [730, 1556], "easing": "easeInOut" }
+    }
+  ]
+}

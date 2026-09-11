@@ -1,4 +1,5 @@
 node_modules/
+.playwright-browsers/
 dist/
 .next/
 out/
@@ -19,3 +20,13 @@ android/twa/
 android/dist/
 android/*.keystore
 browser-tour/
+
+# 화이트보드 쇼츠 중간 산출물 — 선화 PNG와 주석으로 언제든 다시 만든다.
+# 완성본 public/videos/*.mp4 는 배포에 필요하므로 커밋한다.
+assets/whiteboard/*/scene-*-whiteboard.mp4
+assets/whiteboard/*/*_raw.mp4
+assets/whiteboard/*/voice-samples/
+__pycache__/
+
+.vercel
+.env*
