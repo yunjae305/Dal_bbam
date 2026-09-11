@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
 
   const { data: media, error: mediaError } = await context.db
     .from('community_media')
-    .select('id, staging_path, mime_type, size_bytes, status, public_path')
+    .select('id, staging_path, mime_type, size_bytes, status, public_path, moderation')
     .eq('id', body.mediaId)
     .eq('actor_key', context.user.actorKey)
     .maybeSingle();
@@ -56,6 +56,7 @@ export async function POST(request: NextRequest) {
     return apiData({
       mediaId: media.id,
       status: 'approved',
+      privacyCheck: media.moderation?.privacyCheck ?? 'unknown',
       url: media.public_path ? String(media.public_path) : null
     }, { headers: { 'Cache-Control': 'private, no-store' } });
   }
@@ -86,7 +87,8 @@ export async function POST(request: NextRequest) {
 
   try {
     // Without OpenAI the image cannot be inspected; it already passed the type/size checks.
-    const [moderation, privacy] = isOpenAiAvailable() ? await Promise.all([
+    const scanned = isOpenAiAvailable();
+    const [moderation, privacy] = scanned ? await Promise.all([
       moderateContent({ text: 'User submitted travel photo', imageUrl: signed.signedUrl }),
       generateStructured<{ containsPersonalInformation: boolean }>({
         name: 'image_privacy_check',
@@ -106,6 +108,7 @@ export async function POST(request: NextRequest) {
       { value: { containsPersonalInformation: false } }
     ];
 
+    if (scanned && typeof privacy.value?.containsPersonalInformation !== 'boolean') throw new Error('Invalid image privacy result.');
     if (!moderation.allowed || privacy.value.containsPersonalInformation) {
       await context.db.from('community_media').update({
         status: 'rejected',
@@ -166,7 +169,7 @@ export async function POST(request: NextRequest) {
       width: transformed.info.width,
       height: transformed.info.height,
       size_bytes: outputBytes.byteLength,
-      moderation: { categories: moderation.categories, personalInformation: false }
+      moderation: { categories: moderation.categories, personalInformation: scanned ? false : null, privacyCheck: scanned ? 'completed' : 'unavailable' }
     }).eq('id', media.id).eq('actor_key', context.user.actorKey);
     if (updateError) {
       await context.db.storage.from('community-public').remove([publicPath]);
@@ -176,6 +179,7 @@ export async function POST(request: NextRequest) {
     return apiData({
       mediaId: media.id,
       status: 'approved',
+      privacyCheck: scanned ? 'completed' : 'unavailable',
       url: publicUrl.publicUrl
     }, { headers: { 'Cache-Control': 'private, no-store' } });
   } catch (error) {

@@ -15,6 +15,7 @@ import {
 import { moderateContent } from '@/backend/openai';
 import { createSupabaseAdminClient } from '@/backend/supabase/admin';
 import { isFeatureEnabled } from '@/backend/features';
+import { placeCategories, type PlaceCategory } from '@/shared/types';
 
 const categories = ['review', 'tip', 'food', 'lodging'] as const;
 type CommunityCategory = (typeof categories)[number];
@@ -36,17 +37,24 @@ export async function GET(request: NextRequest) {
   const user = await getCurrentUser();
   const category = request.nextUrl.searchParams.get('category');
   const contentId = request.nextUrl.searchParams.get('contentId');
+  const region = (request.nextUrl.searchParams.get('region') ?? '').trim().slice(0, 60);
+  const placeCategory = request.nextUrl.searchParams.get('placeCategory');
+  if (placeCategory && !placeCategories.includes(placeCategory as PlaceCategory)) {
+    return apiError('INVALID_CATEGORY', '장소 카테고리가 올바르지 않습니다.');
+  }
   const bookmarked = request.nextUrl.searchParams.get('bookmarked') === 'true';
   if (bookmarked && !user) return apiError('UNAUTHENTICATED', '로그인이 필요합니다.', 401);
 
   let query = db
     .from('community_posts')
-    .select(buildCommunitySelect({ placeInner: Boolean(contentId), bookmarkInner: bookmarked && Boolean(user) }))
+    .select(buildCommunitySelect({ placeInner: Boolean(contentId || region || placeCategory), bookmarkInner: bookmarked && Boolean(user) }))
     .eq('status', 'published')
     .order('created_at', { ascending: false })
     .limit(100);
   if (categories.includes(category as CommunityCategory)) query = query.eq('category', category);
   if (contentId) query = query.eq('places.content_id', contentId);
+  if (region) query = query.ilike('places.address', `%${region.replace(/[\\%_]/g, '\\$&')}%`);
+  if (placeCategory) query = query.eq('places.category', placeCategory);
   if (bookmarked && user) query = query.eq('community_bookmarks.actor_key', user.actorKey);
 
   const { data, error } = await query;
@@ -93,6 +101,9 @@ export async function POST(request: NextRequest) {
   if (body.rating !== undefined && (!Number.isInteger(body.rating) || body.rating < 1 || body.rating > 5)) {
     return apiError('INVALID_RATING', '별점은 1~5 사이여야 합니다.');
   }
+  if ((body.category === 'food' || body.category === 'lodging') && (!body.contentId || body.rating === undefined)) {
+    return apiError('REVIEW_PLACE_REQUIRED', '맛집·숙소 평가에는 방문한 장소와 별점이 필요합니다.');
+  }
 
   const rateLimit = await checkRateLimit(context, 'community-post', 5);
   if (rateLimit !== 'ok') return rateLimitError(rateLimit, '게시 요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.');
@@ -111,6 +122,10 @@ export async function POST(request: NextRequest) {
 
   const placeId = body.contentId ? await resolvePlaceId(context.db, body.contentId.trim()) : null;
   if (body.contentId && !placeId) return apiError('PLACE_NOT_FOUND', '연결할 관광지를 찾을 수 없습니다.', 404);
+  if (placeId && (body.category === 'food' || body.category === 'lodging')) {
+    const { data: place } = await context.db.from('places').select('category').eq('id', placeId).maybeSingle();
+    if (place?.category !== body.category) return apiError('INVALID_REVIEW_PLACE', '평가 종류와 방문한 장소가 일치하지 않습니다.');
+  }
 
   const mediaIds = Array.from(new Set(body.mediaIds ?? [])).slice(0, 5);
   if (mediaIds.length) {

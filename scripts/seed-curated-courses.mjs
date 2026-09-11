@@ -1,22 +1,13 @@
 import { randomUUID } from 'node:crypto';
+import { pathToFileURL } from 'node:url';
 import { createClient } from '@supabase/supabase-js';
 
-const required = ['NEXT_PUBLIC_SUPABASE_URL', 'SUPABASE_SECRET_KEY'];
-for (const name of required) {
-  if (!process.env[name]?.trim()) throw new Error(`${name} is required.`);
-}
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SECRET_KEY,
-  { auth: { persistSession: false, autoRefreshToken: false }, realtime: { transport: class { constructor() { throw new Error('no realtime'); } } } }
-);
-
 // Each stop lists name patterns in preference order; the first synced place
-// whose name matches is used. Stops with no match are skipped.
-const curatedCourses = [
+// whose name matches is used. Resolve every stop before making any mutation.
+export const curatedCourses = [
   {
     title: '신라 천년 역사 코스',
+    theme: 'heritage',
     description: '불국사에서 첨성대까지, 유네스코 세계유산과 신라 왕경의 핵심을 하루에 둘러보는 정석 코스입니다.',
     transport: 'car',
     stops: [
@@ -29,6 +20,7 @@ const curatedCourses = [
   },
   {
     title: '달빛 야경 산책 코스',
+    theme: 'attraction',
     description: '해가 지면 시작되는 경주의 두 번째 얼굴. 달밤의 왕경을 걸어서 즐기는 야경 코스입니다.',
     transport: 'walking',
     stops: [
@@ -40,6 +32,7 @@ const curatedCourses = [
   },
   {
     title: '경주 미식 나들이 코스',
+    theme: 'food',
     description: '교촌마을 한식부터 황리단길 디저트까지, 걸으며 맛보는 경주의 맛 코스입니다.',
     transport: 'walking',
     stops: [
@@ -51,14 +44,14 @@ const curatedCourses = [
   }
 ];
 
-async function findPlace(patterns, categories) {
+async function findPlace(db, patterns, categories) {
   for (const pattern of patterns) {
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from('places')
       .select('id, name, category')
       .ilike('name', `%${pattern}%`)
       .limit(20);
-    if (error) throw error;
+    if (error) throw Object.assign(new Error('seed_place_read_failed'), { code: error.code });
     if (!data?.length) continue;
 
     // Prefer the requested categories, then the most canonical (shortest) name
@@ -66,66 +59,69 @@ async function findPlace(patterns, categories) {
     const preferred = categories?.length
       ? data.filter(row => categories.includes(row.category))
       : data;
-    const candidates = preferred.length ? preferred : data;
-    candidates.sort((a, b) => a.name.length - b.name.length);
-    return candidates[0];
+    preferred.sort((a, b) => a.name.length - b.name.length || a.name.localeCompare(b.name, 'ko') || a.id.localeCompare(b.id));
+    if (preferred.length) return preferred[0];
   }
   return null;
 }
 
-let created = 0;
-for (const course of curatedCourses) {
-  const resolvedStops = [];
-  for (const stop of course.stops) {
-    const place = await findPlace(stop.patterns, stop.categories);
-    if (place) resolvedStops.push({ ...stop, place });
-    else process.stdout.write(`  skip stop (no match): ${stop.patterns[0]} — ${course.title}\n`);
+export async function seedCuratedCourses({ db, url, secret, courses = curatedCourses, fetcher = fetch }) {
+  const response = await fetcher(`${url.replace(/\/$/, '')}/rest/v1/`, {
+    headers: { apikey: secret, Authorization: `Bearer ${secret}`, Accept: 'application/openapi+json' },
+    signal: AbortSignal.timeout(10000)
+  });
+  if (!response.ok) throw new Error('seed_schema_unverified');
+  const schema = await response.json();
+  if (!schema?.paths?.['/rpc/save_curated_course']?.post) throw new Error('seed_required_rpc_missing');
+
+  const plans = [];
+  for (const course of courses) {
+    const { data: existing, error } = await db.from('courses').select('id, share_token').eq('is_curated', true).eq('title', course.title);
+    if (error || !Array.isArray(existing)) throw new Error('seed_course_read_failed');
+    if (existing.length > 1) throw new Error('seed_duplicate_course_title_requires_manual_resolution');
+    const stops = [];
+    for (const stop of course.stops) {
+      const place = await findPlace(db, stop.patterns, stop.categories);
+      if (!place) throw new Error('seed_required_place_missing');
+      stops.push({ place_id: place.id, order_index: stops.length, reason: stop.reason, stay_minutes: stop.stayMinutes });
+    }
+    if (!stops.length || new Set(stops.map(stop => stop.place_id)).size !== stops.length) throw new Error('seed_duplicate_or_empty_stops');
+    plans.push({ course, existing: existing[0] ?? null, stops });
   }
-  if (resolvedStops.length < 3) {
-    process.stdout.write(`skip course (needs 3+ stops): ${course.title}\n`);
-    continue;
+
+  const completed = [];
+  for (const plan of plans) {
+    // The RPC updates one existing header and its stops in one transaction.
+    // Its UPDATE preserves the ID, share_token and existing metadata keys.
+    const { data, error } = await db.rpc('save_curated_course', {
+      p_id: plan.existing?.id ?? null,
+      p_title: plan.course.title, p_description: plan.course.description,
+      p_transport: plan.course.transport, p_theme: plan.course.theme,
+      p_share_token: plan.existing ? plan.existing.share_token : randomUUID().replaceAll('-', ''),
+      p_items: plan.stops
+    });
+    if (error || !data?.id) throw new Error('seed_atomic_course_save_failed');
+    completed.push({ id: data.id, title: plan.course.title, updated: Boolean(plan.existing), stops: plan.stops.length });
   }
-
-  // Re-runnable: replace an existing curated course with the same title.
-  const { data: existing } = await supabase
-    .from('courses')
-    .select('id')
-    .eq('is_curated', true)
-    .eq('title', course.title);
-  for (const row of existing ?? []) {
-    await supabase.from('courses').delete().eq('id', row.id);
-  }
-
-  const { data: inserted, error: courseError } = await supabase
-    .from('courses')
-    .insert({
-      actor_key: null,
-      user_id: null,
-      title: course.title,
-      description: course.description,
-      transport: course.transport,
-      is_ai_generated: false,
-      is_curated: true,
-      share_token: randomUUID().replaceAll('-', ''),
-      metadata: { seededBy: 'seed-curated-courses', seededAt: new Date().toISOString() }
-    })
-    .select('id')
-    .single();
-  if (courseError) throw courseError;
-
-  const rows = resolvedStops.map((stop, index) => ({
-    course_id: inserted.id,
-    place_id: stop.place.id,
-    order_no: index,
-    order_index: index,
-    reason: stop.reason,
-    stay_minutes: stop.stayMinutes
-  }));
-  const { error: stopsError } = await supabase.from('course_places').insert(rows);
-  if (stopsError) throw stopsError;
-
-  created += 1;
-  process.stdout.write(`seeded: ${course.title} (${rows.length} stops: ${resolvedStops.map(stop => stop.place.name).join(' → ')})\n`);
+  return completed;
 }
 
-process.stdout.write(`Done. ${created} curated courses.\n`);
+async function main() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
+  const secret = process.env.SUPABASE_SECRET_KEY?.trim();
+  if (!url || !secret) throw new Error('seed_database_not_configured');
+  const db = createClient(url, secret, {
+    auth: { persistSession: false, autoRefreshToken: false },
+    global: { fetch: (input, init) => fetch(input, { ...init, signal: AbortSignal.timeout(15000) }) }
+  });
+  const courses = await seedCuratedCourses({ db, url, secret });
+  console.log(JSON.stringify({ created: courses.filter(course => !course.updated).length, updated: courses.filter(course => course.updated).length, courses }, null, 2));
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch(error => {
+    // Do not emit provider messages, connection URLs or stored row values.
+    console.error(/^seed_[a-z_]+$/.test(error?.message) ? error.message : 'seed_request_failed');
+    process.exitCode = 1;
+  });
+}

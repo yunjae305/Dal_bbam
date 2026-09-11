@@ -1,13 +1,5 @@
-import { LegalPage } from '@/frontend/components/legal/legal-page';
+﻿import { LegalPage } from '@/frontend/components/legal/legal-page';
 
 export default function LocationTermsPage() {
-  return <LegalPage title="위치기반서비스 이용약관" description="현재 위치 주변 탐색과 관광지 스탬프 확인을 위한 위치정보 이용 조건입니다." sections={[
-    { title: '1. 서비스 내용', items: ['현재 위치를 지도에 표시하고 주변 관광지를 검색합니다.', '선택한 관광지까지의 경로를 외부 지도 제공자를 통해 조회합니다.', '관광지 반경과 위치 정확도를 확인해 방문 스탬프를 발급합니다.'] },
-    { title: '2. 동의와 철회', paragraphs: ['위치 기능을 처음 사용할 때 목적과 저장 범위를 알리고 별도 동의를 받습니다. 동의하지 않아도 수동 지도 탐색 등 위치가 필요 없는 기능을 이용할 수 있습니다. 브라우저·운영체제 설정 또는 서비스 내 동의 철회로 언제든 중단할 수 있습니다.'] },
-    { title: '3. 보유와 보호', paragraphs: ['현재 위치는 요청 처리 중에만 사용하며 원시 위도·경도 이력은 저장하지 않습니다. 스탬프 부정 이용 방지와 이의 처리에 필요한 정확도, 관광지까지의 계산 거리, 확인 시각만 최소한으로 보관합니다.'] },
-    { title: '4. 제3자 서비스', paragraphs: ['지도 표시와 경로 계산에는 Kakao 지도 서비스를 사용하며, 경로 요청 시 출발지와 목적지 좌표가 Kakao API로 전달될 수 있습니다. 상세 길안내를 선택하면 카카오맵 앱 또는 웹으로 이동합니다.'] },
-    { title: '5. 이용자 의무와 안전', paragraphs: ['운전 또는 이동 중 화면 조작을 피하고 현장 표지와 안전 지침을 우선해야 합니다. 좌표·현장 코드를 조작해 스탬프나 보상을 부정 취득할 수 없습니다.'] },
-    { title: '6. 손해배상과 분쟁', paragraphs: ['운영자 또는 이용자의 귀책으로 손해가 발생한 경우 관계 법령에 따릅니다. 위치정보 이용과 관련한 문의·이의는 위 연락처로 접수할 수 있습니다.'] }
-  ]} />;
+  return <LegalPage policy="location" />;
 }
-

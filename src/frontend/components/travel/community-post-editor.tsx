@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { Camera, LoaderCircle, MapPin, Sparkles, Star, X } from 'lucide-react';
-import type { CommunityPost } from '@/shared/types';
+import type { CommunityPost, PlaceSummary } from '@/shared/types';
+import { communityCopy } from '@/shared/community';
 import { createSupabaseBrowserClient } from '@/frontend/supabase/client';
 import { useLocale } from '@/frontend/i18n/locale-context';
 import { uiMessages } from '@/shared/ui-messages';
@@ -12,17 +13,20 @@ type DraftForm = {
   title: string;
   content: string;
   rating: number;
+  contentId: string;
 };
 
 type Props = {
   post?: CommunityPost;
+  initialPlace?: Pick<PlaceSummary, 'contentId' | 'name' | 'category'>;
   onClose: () => void;
   onSaved: (post: CommunityPost) => void | Promise<void>;
 };
 
-export function CommunityPostEditor({ post, onClose, onSaved }: Props) {
+export function CommunityPostEditor({ post, initialPlace, onClose, onSaved }: Props) {
   const { locale, messages } = useLocale();
   const ui = uiMessages[locale].community;
+  const copy = communityCopy[locale];
   const categories: Array<{ value: CommunityPost['category']; label: string }> = [
     { value: 'review', label: ui.review },
     { value: 'tip', label: ui.tip },
@@ -30,21 +34,33 @@ export function CommunityPostEditor({ post, onClose, onSaved }: Props) {
     { value: 'lodging', label: ui.lodging }
   ];
   const [form, setForm] = useState<DraftForm>({
-    category: post?.category ?? 'review',
+    category: post?.category ?? (initialPlace?.category === 'food' || initialPlace?.category === 'lodging' ? initialPlace.category : 'review'),
     title: post?.title ?? '',
     content: post?.content ?? '',
-    rating: post?.rating ?? 5
+    rating: post?.rating ?? 5,
+    contentId: post?.contentId ?? initialPlace?.contentId ?? ''
   });
   const [mediaId, setMediaId] = useState('');
   const [previewUrl, setPreviewUrl] = useState(post?.mediaUrls[0] ?? '');
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
   const [moderationReady, setModerationReady] = useState<boolean | null>(null);
+  const [places, setPlaces] = useState<PlaceSummary[]>([]);
+  const [placeError, setPlaceError] = useState('');
 
   const dirty = form.title !== (post?.title ?? '') ||
     form.content !== (post?.content ?? '') ||
     form.category !== (post?.category ?? 'review') ||
-    form.rating !== (post?.rating ?? 5) || Boolean(mediaId);
+    form.rating !== (post?.rating ?? 5) || form.contentId !== (post?.contentId ?? initialPlace?.contentId ?? '') || Boolean(mediaId);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void fetch(`/api/places?lang=${locale}`, { signal: controller.signal })
+      .then(response => { if (!response.ok) throw new Error(copy.placesFailed); return response.json(); })
+      .then(payload => setPlaces(Array.isArray(payload.data) ? payload.data : []))
+      .catch(error => { if (!controller.signal.aborted) setPlaceError(error instanceof Error ? error.message : copy.placesFailed); });
+    return () => controller.abort();
+  }, [locale, copy.placesFailed]);
 
   useEffect(() => {
     function closeOnEscape(event: KeyboardEvent) {
@@ -102,7 +118,10 @@ export function CommunityPostEditor({ post, onClose, onSaved }: Props) {
       if (!completeResponse.ok) throw new Error(completePayload?.error?.message ?? ui.imageRejected);
       setMediaId(completePayload.data.mediaId);
       setPreviewUrl(completePayload.data.url);
-      setNotice(ui.imageApproved);
+      setNotice(completePayload.data.privacyCheck === 'unavailable' ? copy.imageScanUnavailable : ui.imageApproved);
+      if (moderationReady && !form.title.trim() && !form.content.trim()) {
+        await createStory(completePayload.data.mediaId, false);
+      }
     } catch (cause) {
       setNotice(cause instanceof Error ? cause.message : ui.imageUploadFailed);
       setMediaId('');
@@ -112,19 +131,23 @@ export function CommunityPostEditor({ post, onClose, onSaved }: Props) {
     }
   }
 
-  async function createStory() {
-    if (!mediaId) return;
+  async function createStory(selectedMediaId = mediaId, replaceText = true) {
+    if (!selectedMediaId) return;
     setBusy(true);
-    setNotice('');
+    setNotice(copy.storyPreparing);
     try {
       const response = await fetch('/api/community/story', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mediaId, lang: locale, notes: form.content })
+        body: JSON.stringify({ mediaId: selectedMediaId, lang: locale, notes: form.content })
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload?.error?.message ?? ui.storyFailed);
-      setForm(current => ({ ...current, title: payload.data.title, content: payload.data.content }));
+      setForm(current => ({
+        ...current,
+        title: replaceText || !current.title.trim() ? payload.data.title : current.title,
+        content: replaceText || !current.content.trim() ? payload.data.content : current.content
+      }));
       setNotice(messages.community.explicitPublish);
     } catch (cause) {
       setNotice(cause instanceof Error ? cause.message : ui.storyFailed);
@@ -142,6 +165,7 @@ export function CommunityPostEditor({ post, onClose, onSaved }: Props) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...form,
+          contentId: form.contentId || (post ? null : undefined),
           rating: form.category === 'tip' ? (post ? null : undefined) : form.rating,
           mediaIds: post ? undefined : mediaId ? [mediaId] : []
         })
@@ -157,6 +181,11 @@ export function CommunityPostEditor({ post, onClose, onSaved }: Props) {
   }
 
   const ratingEnabled = form.category !== 'tip';
+  const requiresPlace = form.category === 'food' || form.category === 'lodging';
+  const visiblePlaces = places.filter(place => !requiresPlace || place.category === form.category);
+  const knownPlaceMatches = (initialPlace?.contentId === form.contentId && initialPlace.category === form.category) ||
+    (post?.contentId === form.contentId && post.placeCategory === form.category);
+  const missingPlace = requiresPlace && (!form.contentId || (places.length > 0 && !knownPlaceMatches && !visiblePlaces.some(place => place.contentId === form.contentId)));
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-[#f8f6f1]" role="dialog" aria-modal="true" aria-labelledby="community-editor-title">
@@ -164,7 +193,7 @@ export function CommunityPostEditor({ post, onClose, onSaved }: Props) {
         <header className="sticky top-0 z-10 -mx-5 flex min-h-16 items-center justify-between border-b border-black/5 bg-[#fffdfa]/95 px-5 backdrop-blur">
           <button type="button" onClick={requestClose} className="min-h-11 min-w-11 text-left text-[12px] font-black text-[#173e78]">{ui.cancel}</button>
           <h1 id="community-editor-title" className="text-[18px] font-black text-[#173e78]">{post ? ui.editPost : ui.newPost}</h1>
-          <button type="button" onClick={() => void submit()} disabled={busy || !form.title.trim() || !form.content.trim()} className="min-h-11 min-w-11 text-right text-[12px] font-black text-[#f45f62] disabled:opacity-40">{ui.save}</button>
+          <button type="button" onClick={() => void submit()} disabled={busy || missingPlace || !form.title.trim() || !form.content.trim()} className="min-h-11 min-w-11 text-right text-[12px] font-black text-[#f45f62] disabled:opacity-40">{ui.save}</button>
         </header>
 
         <section className="pt-7">
@@ -175,7 +204,16 @@ export function CommunityPostEditor({ post, onClose, onSaved }: Props) {
             ))}
           </div>
 
-          {post?.contentId && <div className="mt-6 flex min-h-12 items-center gap-2 rounded-2xl bg-[#f4f1ed] px-4 text-[11px] font-bold text-[#173e78]"><MapPin size={16} /> {ui.linkedPlace.replace('{id}', post.contentId)}</div>}
+          <label className="mt-6 block text-[12px] font-black text-[#173e78]">
+            <span className="flex items-center gap-2"><MapPin size={16} />{copy.place}</span>
+            <select value={form.contentId} onChange={event => setForm(current => ({ ...current, contentId: event.target.value }))} required={requiresPlace} className="mt-2 min-h-12 w-full rounded-2xl border border-[#e2ddd5] bg-white px-3 text-[12px] font-semibold">
+              <option value="">{requiresPlace ? copy.choosePlace : copy.optionalPlace}</option>
+              {form.contentId && !places.some(place => place.contentId === form.contentId) && <option value={form.contentId}>{post?.placeName ?? initialPlace?.name ?? form.contentId}</option>}
+              {visiblePlaces.map(place => <option key={place.contentId} value={place.contentId}>{place.name}</option>)}
+            </select>
+            <span className="mt-2 block text-[10px] font-medium text-[#69717e]">{requiresPlace ? copy.placeRequired : copy.placeHint}</span>
+          </label>
+          {placeError && <p role="status" className="mt-2 text-xs text-red-700">{placeError}</p>}
 
           <div className="mt-6">
             <div className="flex items-center justify-between"><p className="text-[12px] font-black text-[#173e78]">{ui.photo}</p>{!post && <p className="text-[9px] text-[#8f8b86]">{ui.fileHint}</p>}</div>
@@ -206,10 +244,10 @@ export function CommunityPostEditor({ post, onClose, onSaved }: Props) {
           {ratingEnabled && <fieldset className="mt-4 rounded-2xl border border-[#e2ddd5] bg-white p-4"><legend className="px-1 text-[12px] font-black text-[#173e78]">{ui.rating}</legend><div className="mt-1 flex justify-between">{[1, 2, 3, 4, 5].map(value => <button key={value} type="button" onClick={() => setForm(current => ({ ...current, rating: value }))} className="grid min-h-11 min-w-11 place-items-center" aria-label={ui.points.replace('{value}', String(value))}><Star size={27} className={value <= form.rating ? 'fill-[#f45f62] text-[#f45f62]' : 'text-[#d5d0ca]'} /></button>)}</div></fieldset>}
 
           <p className="mt-5 rounded-2xl bg-[#fff0ed] p-4 text-[10px] font-bold leading-5 text-[#8d5550]">{ui.privacyNote}</p>
-          {moderationReady === false && <p className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-[10px] font-bold leading-5 text-amber-800" role="status">{ui.localModerationNote}</p>}
+          {moderationReady === false && <p className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-[10px] font-bold leading-5 text-amber-800" role="status">{copy.imageScanUnavailable}</p>}
           {notice && <p className="mt-3 rounded-2xl bg-[#f1eee9] p-4 text-[10px] font-bold leading-5 text-[#765b57]" role="status">{notice}</p>}
 
-          <button type="button" onClick={() => void submit()} disabled={busy || !form.title.trim() || !form.content.trim()} className="mt-5 flex min-h-14 w-full items-center justify-center gap-2 rounded-2xl bg-[#f45f62] text-[12px] font-black text-white shadow-lg shadow-red-200/60 disabled:opacity-40">
+          <button type="button" onClick={() => void submit()} disabled={busy || missingPlace || !form.title.trim() || !form.content.trim()} className="mt-5 flex min-h-14 w-full items-center justify-center gap-2 rounded-2xl bg-[#f45f62] text-[12px] font-black text-white shadow-lg shadow-red-200/60 disabled:opacity-40">
             {busy ? <LoaderCircle size={17} className="animate-spin" /> : post ? ui.saveChanges : ui.publish}
           </button>
         </section>

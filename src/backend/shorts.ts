@@ -42,7 +42,7 @@ export function mapShortRow(row: ShortRow, actorKey?: string): ShortItem {
     liked: Boolean(mine?.liked),
     saved: Boolean(mine?.saved),
     likeCount: interactions.filter(item => item.liked === true).length,
-    isAiGenerated: row.narration_id !== null
+    isAiGenerated: Boolean(row.narration_id)
   };
 }
 

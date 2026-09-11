@@ -101,7 +101,7 @@ async function getGrounding(contentId: string, lang: Lang): Promise<Grounding | 
       name = String(translation?.name || data.name || '');
       overview = String(
         translation?.overview || translation?.description || data.overview || data.description || ''
-      );
+      ).trim();
     }
   }
 
@@ -120,7 +120,7 @@ async function getGrounding(contentId: string, lang: Lang): Promise<Grounding | 
   }
 
   if (overview.trim()) {
-    return { placeId, contentId, name: name || '경주 관광지', overview };
+    return { placeId, contentId, name: name || '경주 관광지', overview: overview.trim() };
   }
 
   const place = (await getTourMvpData(lang)).places.find(item =>
@@ -155,22 +155,46 @@ function fallbackNarration(grounding: Grounding, lang: Lang): Narration {
 }
 
 function validateNarration(value: AiNarration, grounding: Grounding, lang: Lang): boolean {
-  return value.contentId === grounding.contentId &&
+  return Boolean(value) && value.contentId === grounding.contentId &&
     value.lang === lang &&
+    typeof value.title === 'string' &&
     value.title.length > 0 &&
     value.title.length <= 80 &&
-    value.summary.length > 0 &&
+    typeof value.summary === 'string' && value.summary.length > 0 &&
     value.summary.length <= 240 &&
-    value.narration.length > 0 &&
+    typeof value.narration === 'string' && value.narration.length > 0 &&
     value.narration.length <= 1800 &&
-    value.tags.length <= 6;
+    Array.isArray(value.tags) && value.tags.length >= 1 && value.tags.length <= 6 &&
+    value.tags.every(tag => typeof tag === 'string' && tag.trim().length > 0 && tag.length <= 30);
 }
+
+type NarrationResult = { narration: Narration; rowId?: string; fallback: boolean };
+const pendingNarrations = new Map<string, Promise<NarrationResult>>();
 
 export async function getOrCreateNarration(
   contentId: string,
   lang: Lang,
-  actorKey: string
-): Promise<{ narration: Narration; rowId?: string; fallback: boolean }> {
+  actorKey: string,
+  options: { allowGeneration?: boolean } = {}
+): Promise<NarrationResult> {
+  const key = `${contentId}:${lang}:${options.allowGeneration !== false}`;
+  const pending = pendingNarrations.get(key);
+  if (pending) return pending;
+  const request = createNarration(contentId, lang, actorKey, options.allowGeneration !== false);
+  pendingNarrations.set(key, request);
+  try {
+    return await request;
+  } finally {
+    if (pendingNarrations.get(key) === request) pendingNarrations.delete(key);
+  }
+}
+
+async function createNarration(
+  contentId: string,
+  lang: Lang,
+  actorKey: string,
+  allowGeneration: boolean
+): Promise<NarrationResult> {
   const grounding = await getGrounding(contentId, lang);
   if (!grounding || !grounding.overview.trim()) {
     throw new Error('PLACE_GROUNDING_NOT_FOUND');
@@ -208,11 +232,11 @@ export async function getOrCreateNarration(
     }
   }
 
-  if (!openAiAvailable()) {
+  if (!allowGeneration || !openAiAvailable()) {
     console.info(JSON.stringify({
       event: 'openai_fallback',
       operation: 'tour_narration',
-      reason: process.env.OPENAI_API_KEY?.trim() ? 'unauthorized_backoff' : 'not_configured',
+      reason: !allowGeneration ? 'cache_only' : process.env.OPENAI_API_KEY?.trim() ? 'unavailable_or_backoff' : 'not_configured',
       contentId,
       lang
     }));

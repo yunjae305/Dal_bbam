@@ -8,6 +8,7 @@ import {
   parseBody,
   resolvePlaceId
 } from '@/backend/http';
+import { duplicateScheduleItems, isScheduleDate as isDate, isScheduleItem as isValidItem } from '@/backend/schedules';
 
 type RouteContext = { params: Promise<{ id: string }> };
 type ScheduleItem = {
@@ -24,27 +25,7 @@ type SchedulePatch = {
   items?: ScheduleItem[];
 };
 
-const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 const notFound = () => apiError('SCHEDULE_NOT_FOUND', '일정을 찾을 수 없습니다.', 404);
-
-function isDate(value: unknown): value is string {
-  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
-  const parsed = new Date(`${value}T00:00:00Z`);
-  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
-}
-
-function isValidItem(item: unknown, startDate: string, endDate: string): item is ScheduleItem {
-  if (!item || typeof item !== 'object') return false;
-  const candidate = item as Partial<ScheduleItem>;
-  return typeof candidate.contentId === 'string' &&
-    Boolean(candidate.contentId.trim()) &&
-    isDate(candidate.visitDate) &&
-    candidate.visitDate >= startDate &&
-    candidate.visitDate <= endDate &&
-    (candidate.startTime === undefined || (typeof candidate.startTime === 'string' && TIME_PATTERN.test(candidate.startTime))) &&
-    (candidate.stayMinutes === undefined || Number.isInteger(candidate.stayMinutes)) &&
-    (candidate.note === undefined || candidate.note === null || typeof candidate.note === 'string');
-}
 
 export async function GET(request: NextRequest, { params }: RouteContext) {
   const context = await getUserDataContext(request);
@@ -103,9 +84,8 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     return apiError('INVALID_SCHEDULE_ITEM', '방문일·시간 또는 체류시간이 일정 범위와 맞지 않습니다.');
   }
   const items = (body.items ?? []).map(item => ({ ...item, contentId: item.contentId.trim() }));
-  const contentIds = items.map(item => item.contentId);
-  if (new Set(contentIds).size !== contentIds.length) {
-    return apiError('DUPLICATE_SCHEDULE_PLACE', '같은 장소는 일정에 한 번만 추가할 수 있습니다.');
+  if (duplicateScheduleItems(items)) {
+    return apiError('DUPLICATE_SCHEDULE_PLACE', '같은 날짜에 같은 장소를 중복 추가할 수 없습니다.');
   }
 
   const datesChanged = (body.startDate !== undefined && body.startDate !== String(owned.start_date)) ||
@@ -148,21 +128,10 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
   if (body.startDate) patch.start_date = body.startDate;
   if (body.endDate) patch.end_date = body.endDate;
 
-  const { error: updateError } = await context.db
-    .from('schedules')
-    .update(patch)
-    .eq('id', id)
-    .eq('actor_key', context.user.actorKey);
+  const { error: updateError } = await context.db.rpc('update_schedule_with_places', {
+    p_schedule_id: id, p_actor_key: context.user.actorKey, p_patch: patch, p_items: rows
+  });
   if (updateError) return apiError('SCHEDULE_UPDATE_FAILED', updateError.message, 500);
-
-  if (rows) {
-    const { error: replaceError } = await context.db.rpc('replace_schedule_places', {
-      p_schedule_id: id,
-      p_actor_key: context.user.actorKey,
-      p_items: rows
-    });
-    if (replaceError) return apiError('SCHEDULE_ITEMS_REORDER_FAILED', replaceError.message, 500);
-  }
 
   const { data, error } = await context.db
     .from('schedules')

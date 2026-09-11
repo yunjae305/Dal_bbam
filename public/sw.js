@@ -1,4 +1,4 @@
-const cacheName = 'gyeongju-travel-public-v4';
+const cacheName = 'gyeongju-travel-public-v5';
 const assets = [
   '/icon.svg',
   '/icon-192.png',
@@ -9,14 +9,17 @@ const assets = [
   '/login-spring-bg.webp',
   '/offline'
 ];
-const publicApiPaths = ['/api/home', '/api/places'];
+function isPublicPlaceApi(path) {
+  return path === '/api/home' || path === '/api/places' || /^\/api\/places\/[^/]+$/.test(path);
+}
 
 function isCacheable(request, response) {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin || !response || !response.ok) return false;
+  if (/private|no-store/i.test(response.headers.get('cache-control') || '')) return false;
 
   if (url.pathname.startsWith('/_next/static/') || assets.includes(url.pathname)) return true;
-  if (publicApiPaths.some(path => url.pathname === path || url.pathname.startsWith(`${path}/`))) {
+  if (isPublicPlaceApi(url.pathname)) {
     return !request.headers.has('authorization');
   }
 
@@ -28,6 +31,14 @@ function isCacheable(request, response) {
 async function precache() {
   const cache = await caches.open(cacheName);
   await Promise.allSettled(assets.map(asset => cache.add(asset)));
+  // Offline is a client view. Warm its emitted JS/CSS as well as HTML so the
+  // very first offline visit can display public place data without a prior visit.
+  const offline = await cache.match('/offline');
+  if (offline) {
+    const html = await offline.text();
+    const chunks = [...new Set([...html.matchAll(/(?:src|href)="(\/_next\/static\/[^"<>]+)"/g)].map(match => match[1]))];
+    await Promise.allSettled(chunks.map(chunk => cache.add(chunk)));
+  }
 }
 
 self.addEventListener('install', event => {
@@ -36,7 +47,7 @@ self.addEventListener('install', event => {
 });
 
 self.addEventListener('activate', event => {
-  event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(key => key !== cacheName).map(key => caches.delete(key)))));
+  event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(key => key.startsWith('gyeongju-travel-public-') && key !== cacheName).map(key => caches.delete(key)))));
   self.clients.claim();
 });
 
@@ -58,7 +69,7 @@ self.addEventListener('fetch', event => {
   const eligible = url.origin === self.location.origin && (
     url.pathname.startsWith('/_next/static/') ||
     assets.includes(url.pathname) ||
-    publicApiPaths.some(path => url.pathname === path || url.pathname.startsWith(`${path}/`))
+    isPublicPlaceApi(url.pathname)
   );
 
   if (!eligible) return;

@@ -1,9 +1,11 @@
 import { spawn } from 'node:child_process';
-import { readFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { chromium } from '@playwright/test';
 import * as chromeLauncher from 'chrome-launcher';
 import lighthouse from 'lighthouse';
+import { isolatedTestEnv } from './test-environment.ts';
+import { assertPortAvailable, monitorLocalServer, waitForLocalServer, stopLocalServer } from './local-test-server.mjs';
 
 const projectRoot = fileURLToPath(new URL('..', import.meta.url));
 const config = JSON.parse(await readFile(new URL('../lighthouserc.json', import.meta.url), 'utf8'));
@@ -12,30 +14,14 @@ const origin = `http://127.0.0.1:${port}`;
 const configuredUrls = config.ci?.collect?.url ?? [];
 const urls = configuredUrls.map(value => `${origin}${new URL(value).pathname}`);
 const runs = process.env.CI ? Number(config.ci?.collect?.numberOfRuns || 1) : 1;
+const testEnv = { ...process.env, ...isolatedTestEnv };
+await assertPortAvailable(port);
 const server = spawn(
   process.execPath,
   ['node_modules/next/dist/bin/next', 'start', '--hostname', '127.0.0.1', '--port', String(port)],
-  { cwd: projectRoot, env: process.env, stdio: ['ignore', 'pipe', 'pipe'] }
+  { cwd: projectRoot, env: testEnv, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true }
 );
-
-let serverOutput = '';
-server.stdout.on('data', chunk => { serverOutput += String(chunk); });
-server.stderr.on('data', chunk => { serverOutput += String(chunk); });
-
-async function waitForServer() {
-  const deadline = Date.now() + 120_000;
-  while (Date.now() < deadline) {
-    if (server.exitCode !== null) throw new Error(`Next.js server exited early.\n${serverOutput}`);
-    try {
-      const response = await fetch(`${origin}/login`, { redirect: 'manual' });
-      if (response.status >= 200 && response.status < 500) return;
-    } catch {
-      // Server is still starting.
-    }
-    await new Promise(resolve => setTimeout(resolve, 500));
-  }
-  throw new Error(`Timed out waiting for Next.js.\n${serverOutput}`);
-}
+const serverMonitor = monitorLocalServer(server);
 
 function percentileMedian(values) {
   const sorted = [...values].sort((left, right) => left - right);
@@ -43,8 +29,13 @@ function percentileMedian(values) {
 }
 
 let chrome;
+const report = [];
 try {
-  await waitForServer();
+  await waitForLocalServer(server, serverMonitor, `${origin}/login`, 120_000);
+  const login = await fetch(`${origin}/api/auth/demo`, { method: 'POST', signal: AbortSignal.timeout(5000) });
+  if (!login.ok) throw new Error('Performance test login failed.');
+  const sessionCookie = login.headers.get('set-cookie')?.split(';')[0];
+  await login.arrayBuffer();
   chrome = await chromeLauncher.launch({
     chromePath: chromium.executablePath(),
     chromeFlags: ['--headless=new', '--no-sandbox', '--disable-gpu']
@@ -66,9 +57,13 @@ try {
           deviceScaleFactor: 3,
           disabled: false
         },
-        throttlingMethod: 'simulate'
+        throttlingMethod: 'simulate',
+        extraHeaders: new URL(url).pathname === '/' && sessionCookie ? { Cookie: sessionCookie } : {}
       });
       if (!output?.lhr) throw new Error(`Lighthouse returned no report for ${url}.`);
+      await mkdir(new URL('../test-results/lighthouse/', import.meta.url), { recursive: true });
+      const reportName = new URL(url).pathname.replaceAll('/', '-') || '-home';
+      await writeFile(new URL(`../test-results/lighthouse/${reportName}-${run}.json`, import.meta.url), JSON.stringify(output.lhr));
       results.push({
         accessibility: output.lhr.categories.accessibility?.score ?? 0,
         performance: output.lhr.categories.performance?.score ?? 0,
@@ -84,16 +79,24 @@ try {
       lcp: percentileMedian(results.map(result => result.lcp))
     };
     console.log(`[lighthouse] ${new URL(url).pathname}`, summary);
-    if (summary.accessibility < 0.9) throw new Error(`${url} accessibility score is below 0.90.`);
-    if (summary.lcp > 3000) throw new Error(`${url} LCP ${Math.round(summary.lcp)}ms exceeds 3000ms.`);
+    report.push({ path: new URL(url).pathname, ...summary });
+    if (summary.accessibility < 0.9 || summary.lcp > 3000) process.exitCode = 1;
   }
 } finally {
   try {
-    await chrome?.kill();
-  } catch (error) {
-    // Windows can briefly keep Chrome's temporary profile locked after exit.
-    if (!(error instanceof Error) || !('code' in error) || error.code !== 'EPERM') throw error;
-    console.warn('[lighthouse] Chrome profile cleanup is still pending.');
+    await mkdir(new URL('../test-results/', import.meta.url), { recursive: true });
+    await writeFile(new URL('../test-results/lighthouse-summary.json', import.meta.url), JSON.stringify(report, null, 2));
+  } finally {
+    try {
+      try {
+        await chrome?.kill();
+      } catch (error) {
+        // Windows can briefly keep Chrome's temporary profile locked after exit.
+        if (!(error instanceof Error) || !('code' in error) || error.code !== 'EPERM') throw error;
+        console.warn('[lighthouse] Chrome profile cleanup is still pending.');
+      }
+    } finally {
+      await stopLocalServer(server);
+    }
   }
-  if (server.exitCode === null) server.kill('SIGTERM');
 }

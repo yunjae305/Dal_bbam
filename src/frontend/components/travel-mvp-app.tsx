@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
@@ -16,6 +17,7 @@ import { PhoneStatus } from '@/frontend/components/common/ui';
 import { EmptyState } from '@/frontend/components/common/feedback';
 import { DirectPageShell } from '@/frontend/components/common/direct-page-shell';
 import { useLocale } from '@/frontend/i18n/locale-context';
+import { exploreMessages } from '@/shared/explore-messages';
 import { KakaoMapExplorer } from './travel/kakao-map-explorer';
 
 type HomePanel = 'main' | 'all';
@@ -53,16 +55,14 @@ export function TravelMvpApp({ initialData, userEmail }: { initialData: MvpData;
 
   useEffect(() => {
     try {
-      const recent = JSON.parse(window.localStorage.getItem('dal-bbam-recent-places') || '[]') as string[];
-      setRecentPlaceId(recent[0] ?? '');
-    } catch {
-      window.localStorage.removeItem('dal-bbam-recent-places');
-    }
+      const recent: unknown = JSON.parse(window.localStorage.getItem('dal-bbam-recent-places') || '[]');
+      setRecentPlaceId(Array.isArray(recent) && typeof recent[0] === 'string' ? recent[0] : '');
+    } catch { /* Browsing remains available when local storage is blocked. */ }
   }, []);
 
   useEffect(() => {
     const controller = new AbortController();
-    fetch(`/api/home?lang=${locale}`, { signal: controller.signal })
+    const refreshRanking = () => fetch(`/api/home?lang=${locale}`, { signal: controller.signal })
       .then(async response => {
         const payload = await response.json() as { data?: { popular?: PlaceSummary[] } };
         if (!response.ok || !payload.data?.popular) return;
@@ -72,7 +72,9 @@ export function TravelMvpApp({ initialData, userEmail }: { initialData: MvpData;
         ));
       })
       .catch(() => undefined);
-    return () => controller.abort();
+    void refreshRanking();
+    const interval = window.setInterval(() => { if (document.visibilityState === 'visible') void refreshRanking(); }, 60_000);
+    return () => { controller.abort(); window.clearInterval(interval); };
   }, [initialData.places, locale]);
 
   useEffect(() => {
@@ -178,7 +180,8 @@ function HomeScreen({
   personalized: PersonalizedRecommendation[];
   userName?: string | null;
 }) {
-  const { messages } = useLocale();
+  const { locale, messages } = useLocale();
+  const explore = exploreMessages[locale];
 
   const labelForHomeCategory = (id: string) => {
     if (id === 'ai') return messages.home.aiRecommendation;
@@ -193,10 +196,15 @@ function HomeScreen({
   return (
     <section className="min-h-[calc(100dvh-40px)] bg-[#f5f1ea]">
       <div className="relative min-h-[284px] bg-[#2d2a26] text-white">
-        <img
+        <Image
           className="absolute inset-0 h-full w-full object-cover outline outline-1 -outline-offset-1 outline-black/10"
-          src={homeHeroImage}
+          src={encodeURI(homeHeroImage)}
           alt=""
+          fill
+          quality={60}
+          sizes="(max-width: 430px) 100vw, 430px"
+          loading="eager"
+          fetchPriority="high"
         />
         <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,.08),rgba(0,0,0,.2)_48%,rgba(0,0,0,.46))]" />
         <div className="relative z-10">
@@ -216,8 +224,10 @@ function HomeScreen({
             onSearch();
           }}
         >
-          <img
-            src="/assets/common/icons/검색.png"
+          <Image
+            src={encodeURI('/assets/common/icons/검색.png')}
+            width={15}
+            height={15}
             alt=""
             aria-hidden="true"
             className="h-[15px] w-[15px] object-contain"
@@ -227,6 +237,7 @@ function HomeScreen({
             value={query}
             onChange={event => setQuery(event.target.value)}
             placeholder={messages.common.searchPlaceholder}
+            aria-label={messages.common.searchPlaceholder}
           />
           {query ? (
             <button type="button" onClick={() => setQuery('')} aria-label={messages.common.clearSearch}>
@@ -256,7 +267,7 @@ function HomeScreen({
                   }
                 }}
               >
-                <img src={icon} alt="" aria-hidden="true" className="h-7 w-7 object-contain" />
+                <Image src={encodeURI(icon)} width={28} height={28} alt="" aria-hidden="true" className="h-7 w-7 object-contain" />
                 {labelForHomeCategory(id)}
               </button>
             ))}
@@ -264,12 +275,14 @@ function HomeScreen({
       </div>
 
       <div className="px-5 pt-6">
-        <SectionHeader title={messages.home.today} action={`${messages.common.viewAll} >`} onAction={onOpenAll} />
+        <SectionHeader title={explore.popular} action={`${messages.common.viewAll} >`} onAction={onOpenAll} />
+        <p className="mb-3 px-4 text-[10px] text-[#6e665b]">{explore.popularHint}</p>
         <div className="grid grid-cols-3 gap-4 px-4">
-          {popularPlaces.map(place => (
+          {popularPlaces.map((place, index) => (
             <button key={place.id} className="text-center" onClick={() => onOpenPlace(place.contentId)} type="button">
-              <span className="block aspect-square rounded-lg bg-[#d8d8d8]">
-                <img className="h-full w-full rounded-lg object-cover opacity-80" src={place.image} alt={place.name} />
+              <span className="relative block aspect-square rounded-lg bg-[#d8d8d8]">
+                <TourThumbnail className="h-full w-full rounded-lg object-cover opacity-80" src={place.image} alt={place.name} sizes="100px" />
+                <span className="absolute left-1 top-1 grid h-6 w-6 place-items-center rounded-full bg-[#223c72] text-xs font-black tabular-nums text-white">{index + 1}</span>
               </span>
               <span className="mt-3 block truncate text-[11px] font-bold">{place.name}</span>
             </button>
@@ -278,7 +291,7 @@ function HomeScreen({
 
         {recentPlace && (
           <button type="button" onClick={() => { window.location.href = `/places/${encodeURIComponent(recentPlace.contentId)}`; }} className="mx-1 mt-5 flex w-[calc(100%-8px)] items-center gap-3 rounded-xl bg-[#223c72] p-3 text-left text-white">
-            <img src={recentPlace.image} alt={recentPlace.name} className="h-12 w-14 rounded-lg object-cover" />
+            <TourThumbnail src={recentPlace.image} alt={recentPlace.name} className="h-12 w-14 rounded-lg object-cover" sizes="56px" />
             <span className="min-w-0">
               <span className="block text-[9px] font-black text-white/60">{messages.home.recentPlace}</span>
               <strong className="mt-1 block truncate text-[12px]">{recentPlace.name}</strong>
@@ -304,7 +317,7 @@ function HomeScreen({
                   onClick={() => onOpenPlace(place.contentId)}
                 >
                   <span className="block h-[118px] overflow-hidden rounded-lg bg-[#d8d8d8]">
-                    <img className="h-full w-full object-cover" src={place.image} alt={place.name} />
+                    <TourThumbnail className="h-full w-full object-cover" src={place.image} alt={place.name} />
                   </span>
                   <span className="mt-3 flex items-center gap-2">
                     <span className="truncate text-[11px] font-bold">{place.name}</span>
@@ -363,7 +376,7 @@ function HomeAllScreen({
             <p className="mt-1 text-[11px] font-bold text-[#8f98a6]">{messages.home.allHint}</p>
           </div>
           <button className="grid h-10 w-10 place-items-center rounded-full bg-[#f1f2f4] transition-transform active:scale-[0.96]" type="button" onClick={onClose} aria-label={messages.common.close}>
-            <img src="/assets/common/icons/닫기.png" alt="" aria-hidden="true" className="h-4 w-4 object-contain opacity-55" />
+            <img src={encodeURI('/assets/common/icons/닫기.png')} alt="" aria-hidden="true" className="h-4 w-4 object-contain opacity-55" />
           </button>
         </div>
 
@@ -381,7 +394,7 @@ function HomeAllScreen({
                 }
               }}
             >
-              <img src={icon} alt="" aria-hidden="true" className="h-8 w-8 object-contain" />
+              <Image src={encodeURI(icon)} width={32} height={32} alt="" aria-hidden="true" className="h-8 w-8 object-contain" />
               {categoryLabel(id)}
             </button>
           ))}
@@ -492,7 +505,7 @@ function CoursePreview({ image, title, href }: { image?: string; title: string; 
     <article>
       <Link href={href} className="block transition-transform active:scale-[0.98]">
         <span className="block h-[118px] overflow-hidden rounded-lg bg-[#d8d8d8]">
-          {image && <img className="h-full w-full object-cover opacity-65" src={image} alt="" />}
+          {image && <TourThumbnail className="h-full w-full object-cover opacity-65" src={image} alt="" />}
         </span>
         <span className="mt-3 block text-[11px] font-bold">{title}</span>
       </Link>
@@ -502,4 +515,14 @@ function CoursePreview({ image, title, href }: { image?: string; title: string; 
 
 function Divider() {
   return <div className="my-6 h-px bg-[#d8a59c]" />;
+}
+
+function TourThumbnail({ src, alt, className, sizes = '(max-width: 430px) 100vw, 430px' }: { src: string; alt: string; className: string; sizes?: string }) {
+  // Large Wikimedia originals need the same responsive delivery as local
+  // assets. Other provider hosts retain their existing image URL contract.
+  const optimizable = src.startsWith('/') && !src.startsWith('//')
+    || /^https:\/\/(commons\.wikimedia\.org\/wiki\/Special:FilePath\/|upload\.wikimedia\.org\/wikipedia\/commons\/)[^?#]+$/.test(src);
+  return optimizable
+    ? <Image src={src} alt={alt} width={640} height={400} sizes={sizes} quality={60} loading="lazy" className={className} />
+    : <img src={src} alt={alt} loading="lazy" decoding="async" className={className} />;
 }

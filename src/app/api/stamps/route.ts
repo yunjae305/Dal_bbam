@@ -1,10 +1,14 @@
 import { NextRequest } from 'next/server';
 import { apiData, apiError, getUserDataContext, isErrorContext } from '@/backend/http';
 import { getStampCatalog, getStampRewards, StampDataError, stampMaxAccuracyMeters } from '@/backend/stamps';
+import { isLang } from '@/shared/i18n';
+import { localizeStampReward } from '@/shared/stamp-rewards';
 
 export async function GET(request: NextRequest) {
   const context = await getUserDataContext(request);
   if (isErrorContext(context)) return context.response;
+  const requestedLang = request.nextUrl.searchParams.get('lang');
+  const lang = isLang(requestedLang) ? requestedLang : 'ko';
 
   try {
     const [{ data, error }, targets, rewards] = await Promise.all([
@@ -19,7 +23,10 @@ export async function GET(request: NextRequest) {
     if (error) throw new StampDataError('STAMPS_READ_FAILED', error.message);
 
     return apiData(data ?? [], {
-      meta: { persisted: true, targets, rewards, maxAccuracyMeters: stampMaxAccuracyMeters() },
+      meta: { persisted: true, targets, rewards: {
+        earned: rewards.earned.map(reward => localizeStampReward(reward, lang)),
+        available: rewards.available.map(reward => localizeStampReward(reward, lang))
+      }, maxAccuracyMeters: stampMaxAccuracyMeters() },
       headers: { 'Cache-Control': 'private, no-store' }
     });
   } catch (error) {

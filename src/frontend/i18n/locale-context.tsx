@@ -28,7 +28,8 @@ export function LocaleProvider({
   const [locale, setLocaleState] = useState<Locale>(initialLocale);
 
   useEffect(() => {
-    const savedLocale = window.localStorage.getItem(STORAGE_KEY);
+    let savedLocale: string | null = null;
+    try { savedLocale = window.localStorage.getItem(STORAGE_KEY); } catch { /* Cookie locale remains usable. */ }
     if (isLang(savedLocale) && savedLocale !== initialLocale) {
       setLocaleState(savedLocale);
       document.cookie = `${localeCookieName}=${savedLocale}; path=/; max-age=${localeCookieMaxAge}; samesite=lax`;
@@ -36,10 +37,12 @@ export function LocaleProvider({
     }
   }, [initialLocale, router]);
 
+  useEffect(() => { document.documentElement.lang = locale; }, [locale]);
+
   function setLocale(nextLocale: Locale) {
     setLocaleState(nextLocale);
     document.documentElement.lang = nextLocale;
-    window.localStorage.setItem(STORAGE_KEY, nextLocale);
+    try { window.localStorage.setItem(STORAGE_KEY, nextLocale); } catch { /* Keep the in-memory and cookie locale. */ }
     document.cookie = `${localeCookieName}=${nextLocale}; path=/; max-age=${localeCookieMaxAge}; samesite=lax`;
     startTransition(() => router.refresh());
   }

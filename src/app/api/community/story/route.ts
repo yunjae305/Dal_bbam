@@ -9,7 +9,7 @@ import {
   parseBody,
   rateLimitError
 } from '@/backend/http';
-import { generateStructured } from '@/backend/openai';
+import { generateStructured, moderateContent } from '@/backend/openai';
 import { isLang } from '@/shared/i18n';
 import { isFeatureEnabled } from '@/backend/features';
 
@@ -58,6 +58,8 @@ export async function POST(request: NextRequest) {
   if (!media?.public_path) return apiError('MEDIA_NOT_APPROVED', '검사를 통과한 본인 사진이 필요합니다.', 422);
 
   try {
+    const notesCheck = await moderateContent({ text: body.notes ?? '' });
+    if (!notesCheck.allowed) return apiError('MODERATION_REJECTED', '스토리 메모에서 개인정보 또는 부적절한 내용이 발견되었습니다.', 422);
     const result = await generateStructured<StoryDraft>({
       name: 'community_story_draft',
       schema: storySchema,
@@ -76,6 +78,12 @@ export async function POST(request: NextRequest) {
         ]
       }]
     });
+    const draft = result.value;
+    if (!draft || typeof draft.title !== 'string' || typeof draft.content !== 'string' || !Array.isArray(draft.tags) || draft.tags.some(tag => typeof tag !== 'string')) {
+      throw new Error('Invalid story draft.');
+    }
+    const draftCheck = await moderateContent({ text: `${draft.title}\n${draft.content}\n${draft.tags.join(' ')}` });
+    if (!draftCheck.allowed) return apiError('MODERATION_REJECTED', '생성된 초안이 안전 검사를 통과하지 못했습니다.', 422);
     return apiData({
       ...result.value,
       mediaId: body.mediaId,

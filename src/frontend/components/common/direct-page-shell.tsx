@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { useState } from 'react';
 import { CalendarDays, CircleUserRound, Home, LoaderCircle, LogOut, MapPin, Sparkles } from 'lucide-react';
@@ -61,7 +62,7 @@ export function DirectPageShell({ children, publicView = false }: { children: Re
             return (
               <Link key={href} href={href} aria-current={active ? 'page' : undefined} className={`flex min-h-12 flex-col items-center justify-center gap-1 rounded-xl text-[9px] font-black transition-transform active:scale-[0.96] ${active ? 'text-[#b94f4a]' : 'text-[#484d4b]'}`}>
                 {iconAsset ? (
-                  <img src={iconAsset} alt="" aria-hidden="true" className="h-[18px] w-[18px] object-contain" />
+                  <Image src={encodeURI(iconAsset)} width={18} height={18} alt="" aria-hidden="true" className="h-[18px] w-[18px] object-contain" />
                 ) : (
                   <Icon size={17} />
                 )}

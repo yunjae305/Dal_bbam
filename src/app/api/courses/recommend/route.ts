@@ -9,6 +9,7 @@ import {
   rateLimitError
 } from '@/backend/http';
 import { createCoursePlan } from '@/backend/course-planner';
+import { validCourseStartTime } from '@/backend/course-timing';
 import { getTourMvpData } from '@/backend/tour-mvp-data';
 import { placeToSummary } from '@/backend/place-mapper';
 import { isLang } from '@/shared/i18n';
@@ -19,6 +20,7 @@ function parseRequest(value: Partial<CourseRequest> | null): CourseRequest | nul
   const days = value.days === undefined ? 1 : value.days;
   if (!Number.isInteger(days) || days < 1 || days > 7) return null;
   if (value.purpose !== undefined && typeof value.purpose !== 'string') return null;
+  if (value.startTime !== undefined && !validCourseStartTime(value.startTime)) return null;
 
   const companion = ['solo', 'couple', 'family', 'friends', 'group'].includes(String(value.companion))
     ? value.companion as CourseRequest['companion']
@@ -36,6 +38,7 @@ function parseRequest(value: Partial<CourseRequest> | null): CourseRequest | nul
 
   return {
     purpose: value.purpose?.slice(0, 120),
+    startTime: value.startTime ?? '09:00',
     days: days as number,
     companion,
     interests,

@@ -1,15 +1,20 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Image from 'next/image';
 import { Eye, EyeOff, Lock, Loader2, Mail, Sparkles, UserRound } from 'lucide-react';
 import { useLocale } from '@/frontend/i18n/locale-context';
 import { uiMessages } from '@/shared/ui-messages';
+import { SIGNUP_CONSENT_VERSION, signupConsentCopy } from '@/shared/signup-consent';
+import { authProviderMessages } from '@/shared/auth-provider-messages';
 
 type Mode = 'login' | 'signup';
 
 export default function LoginPage() {
   const { locale } = useLocale();
   const ui = uiMessages[locale].auth;
+  const consentCopy = signupConsentCopy[locale];
+  const providerCopy = authProviderMessages[locale];
   const [mode, setMode] = useState<Mode>('login');
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
@@ -21,8 +26,25 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [demoEnabled, setDemoEnabled] = useState(false);
+  const [googleAvailability, setGoogleAvailability] = useState<'checking' | 'available' | 'unavailable'>('checking');
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [privacyAccepted, setPrivacyAccepted] = useState(false);
 
   const isSignup = mode === 'signup';
+
+  useEffect(() => {
+    let active = true;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 5_000);
+    void fetch('/api/auth/providers', { cache: 'no-store', signal: controller.signal })
+      .then(async response => {
+        const payload: unknown = response.ok ? await response.json() : null;
+        if (active) setGoogleAvailability(payload && typeof payload === 'object' && 'google' in payload && payload.google === true ? 'available' : 'unavailable');
+      })
+      .catch(() => { if (active) setGoogleAvailability('unavailable'); })
+      .finally(() => clearTimeout(timer));
+    return () => { active = false; clearTimeout(timer); controller.abort(); };
+  }, []);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -40,7 +62,7 @@ export default function LoginPage() {
       // 이전 URL과 세션에서 돌아오는 사용자를 위한 호환 메시지입니다.
       kakao_state: ui.kakaoStateExpired,
       kakao_login: ui.kakaoLoginFailed,
-      google_not_configured: ui.googleNotConfigured,
+      google_not_configured: providerCopy.unavailable,
       google_authorization_failed: ui.googleAuthorizationFailed,
       auth_callback_failed: ui.callbackFailed
     };
@@ -53,7 +75,7 @@ export default function LoginPage() {
       .then(response => response.json())
       .then((payload: { enabled?: boolean }) => setDemoEnabled(payload.enabled === true))
       .catch(() => setDemoEnabled(false));
-  }, [ui]);
+  }, [ui, providerCopy]);
 
   function switchMode(next: Mode) {
     setMode(next);
@@ -62,6 +84,7 @@ export default function LoginPage() {
   }
 
   function startGoogleLogin() {
+    if (googleAvailability !== 'available') return;
     window.location.assign('/api/auth/google/login');
   }
 
@@ -122,6 +145,10 @@ export default function LoginPage() {
     setMessage('');
 
     if (isSignup) {
+      if (!termsAccepted || !privacyAccepted) {
+        setError(consentCopy.required);
+        return;
+      }
       if (name.trim().length < 2) {
         setError(ui.nameTooShort);
         return;
@@ -140,7 +167,9 @@ export default function LoginPage() {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, name: name.trim(), password })
+        body: JSON.stringify({ email, name: name.trim(), password, ...(isSignup ? {
+          termsAccepted, privacyAccepted, consentVersion: SIGNUP_CONSENT_VERSION, lang: locale
+        } : {}) })
       });
       const result = await res.json() as { error?: string };
 
@@ -161,12 +190,22 @@ export default function LoginPage() {
   return (
     <main className="min-h-dvh bg-[#1d1d1d] text-white">
       <section
-        className="relative mx-auto flex min-h-dvh w-full max-w-[430px] flex-col overflow-hidden bg-cover bg-center px-6 pb-[calc(env(safe-area-inset-bottom)+28px)] pt-[calc(env(safe-area-inset-top)+16px)] shadow-2xl"
-        style={{
-          backgroundImage:
-            "linear-gradient(180deg, rgba(0,0,0,0.26) 0%, rgba(0,0,0,0.08) 33%, rgba(0,0,0,0.36) 66%, rgba(0,0,0,0.64) 100%), url('/login-spring-bg.webp')"
-        }}
+        className="relative mx-auto flex min-h-dvh w-full max-w-[430px] flex-col overflow-hidden px-6 pb-[calc(env(safe-area-inset-bottom)+28px)] pt-[calc(env(safe-area-inset-top)+16px)] shadow-2xl"
       >
+        <Image
+          src="/login-spring-bg.webp"
+          alt=""
+          aria-hidden="true"
+          fill
+          sizes="(max-width: 430px) 100vw, 430px"
+          loading="eager"
+          fetchPriority="high"
+          className="pointer-events-none object-cover object-center"
+        />
+        <div
+          className="pointer-events-none absolute inset-0"
+          style={{ backgroundImage: 'linear-gradient(180deg, rgba(0,0,0,0.26) 0%, rgba(0,0,0,0.08) 33%, rgba(0,0,0,0.36) 66%, rgba(0,0,0,0.64) 100%)' }}
+        />
         <div className="pointer-events-none absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/55 via-black/20 to-transparent" />
 
         <header className="relative z-10 text-[12px] font-semibold tracking-[-0.01em] text-white/85">
@@ -292,6 +331,7 @@ export default function LoginPage() {
 
             {(error || message) && (
               <p
+                role={error ? 'alert' : 'status'}
                 className={`mb-3 rounded-2xl px-4 py-3 text-center text-[12px] font-bold shadow-lg backdrop-blur-md ${
                   error ? 'bg-red-50/95 text-red-700' : 'bg-white/90 text-[#385145]'
                 }`}
@@ -300,9 +340,24 @@ export default function LoginPage() {
               </p>
             )}
 
+            {isSignup && <fieldset className="mb-4 rounded-2xl bg-black/45 px-4 pb-3 pt-2 text-[11px] text-white backdrop-blur-sm">
+              <legend className="px-1 text-xs font-bold">{consentCopy.title}</legend>
+              <p className="mb-2 text-[10px] leading-5 text-white/90">{consentCopy.summary}</p>
+              <label className="flex min-h-11 cursor-pointer items-center gap-3 leading-5">
+                <input type="checkbox" required checked={termsAccepted} onChange={event => setTermsAccepted(event.target.checked)} className="h-5 w-5 shrink-0 accent-[#2f7567]" />
+                <span>{consentCopy.terms}</span>
+              </label>
+              <a href="/legal/terms" target="_blank" rel="noreferrer" className="ml-8 inline-flex min-h-11 items-center underline underline-offset-2">{consentCopy.termsDetails}</a>
+              <label className="flex min-h-11 cursor-pointer items-center gap-3 leading-5">
+                <input type="checkbox" required checked={privacyAccepted} onChange={event => setPrivacyAccepted(event.target.checked)} className="h-5 w-5 shrink-0 accent-[#2f7567]" />
+                <span>{consentCopy.privacy}</span>
+              </label>
+              <a href="/legal/privacy" target="_blank" rel="noreferrer" className="ml-8 inline-flex min-h-11 items-center underline underline-offset-2">{consentCopy.privacyDetails}</a>
+            </fieldset>}
+
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || (isSignup && (!termsAccepted || !privacyAccepted))}
               className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-[#3d353a]/95 text-[13px] font-bold text-white shadow-[0_10px_28px_rgba(0,0,0,0.34)] transition-[transform,opacity] active:scale-[0.96] disabled:opacity-65"
             >
               {loading && <Loader2 className="animate-spin" size={17} />}
@@ -332,25 +387,36 @@ export default function LoginPage() {
                   aria-label={ui.kakaoLogin}
                 >
                   <img
-                    src="/assets/auth/images/카카오-로그인-버튼.png"
+                    src={encodeURI('/assets/auth/images/카카오-로그인-버튼.png')}
                     alt=""
                     aria-hidden="true"
+                    width={183}
+                    height={45}
+                    loading="eager"
+                    fetchPriority="high"
                     className="h-[45px] w-[183px] object-contain shadow-[0_8px_20px_rgba(0,0,0,0.25)]"
                   />
                 </button>
                 <button
                   type="button"
                   onClick={startGoogleLogin}
-                  className="flex h-11 w-full items-center justify-center transition-transform active:scale-[0.96]"
+                  disabled={loading || googleAvailability !== 'available'}
+                  aria-describedby={googleAvailability !== 'available' ? 'google-availability' : undefined}
+                  className="flex h-11 w-full items-center justify-center transition-transform active:scale-[0.96] disabled:opacity-55"
                   aria-label={ui.googleLogin}
                 >
                   <img
-                    src="/assets/auth/images/구글-로그인-버튼.png"
+                    src={encodeURI('/assets/auth/images/구글-로그인-버튼.png')}
                     alt=""
                     aria-hidden="true"
                     className="h-10 w-[189px] object-contain shadow-[0_8px_20px_rgba(0,0,0,0.22)]"
                   />
                 </button>
+                {googleAvailability !== 'available' && (
+                  <p id="google-availability" role="status" className="text-center text-[11px] leading-5 text-white/90">
+                    {googleAvailability === 'checking' ? providerCopy.checking : providerCopy.unavailable}
+                  </p>
+                )}
                 {demoEnabled && (
                   <button
                     type="button"
@@ -364,10 +430,10 @@ export default function LoginPage() {
                 )}
               </div>
             )}
-            <p className="mt-5 text-center text-[10px] font-semibold leading-5 text-white/70">
+            {!isSignup && <p className="mt-5 text-center text-[10px] font-semibold leading-5 text-white/70">
               {ui.continuePrefix}{' '}<a href="/legal/terms" className="underline underline-offset-2">{ui.terms}</a>{' · '}
               <a href="/legal/privacy" className="underline underline-offset-2">{ui.privacy}</a>{ui.continueSuffix}
-            </p>
+            </p>}
           </form>
         </div>
       </section>
@@ -409,6 +475,7 @@ function AuthInput({
         minLength={minLength}
         className="min-w-0 flex-1 bg-transparent text-[15px] font-semibold text-[#2f2928] outline-none placeholder:text-[#777]"
         placeholder={placeholder}
+        aria-label={placeholder}
         value={value}
         onChange={event => onChange(event.target.value)}
       />

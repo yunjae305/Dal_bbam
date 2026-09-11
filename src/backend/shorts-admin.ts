@@ -1,6 +1,9 @@
 import { createHash } from 'node:crypto';
 import { languages, type Lang } from '@/shared/types';
 import { resolveShortVideoSource } from '@/shared/shorts-video';
+import type { AdminShortItem } from '@/shared/admin-shorts';
+
+export const adminShortRowSelect = 'id, title, summary, narration, image_url, audio_url, video_url, youtube_video_id, duration_seconds, tags, place_id, narration_id, places(content_id), lang, is_published, created_at, updated_at';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const CREATE_KEYS = new Set([
@@ -128,6 +131,18 @@ function parseDuration(value: unknown): number | null {
   return Number.isInteger(value) && Number(value) >= 1 && Number(value) <= 600 ? Number(value) : null;
 }
 
+export function validateAdminShortMedia(value: {
+  imageUrl: string | null;
+  videoUrl: string | null;
+  youtubeVideoId: string | null;
+  narration: string;
+}): Validation<true> {
+  if (resolveShortVideoSource(value).kind !== 'none') return { ok: true, value: true };
+  if (!value.imageUrl || !assetUrl(value.imageUrl)) return invalid('imageUrl 또는 영상 소스 중 하나는 필요합니다.');
+  if (!value.narration.trim()) return invalid('이미지 쇼츠에는 내레이션 원고가 필요합니다.');
+  return { ok: true, value: true };
+}
+
 export function validateAdminShortCreate(input: unknown): Validation<AdminShortCreate> {
   const body = recordFrom(input);
   if (!body || !hasOnlyKeys(body, CREATE_KEYS)) return invalid('허용되지 않은 필드가 있거나 JSON 객체가 아닙니다.');
@@ -135,11 +150,12 @@ export function validateAdminShortCreate(input: unknown): Validation<AdminShortC
   const contentId = cleanText(body.contentId, 200);
   const title = cleanText(body.title, 120);
   const summary = cleanText(body.summary, 600);
-  const narration = cleanText(body.narration, 6000);
+  const narration = body.narration === undefined ? '' : typeof body.narration === 'string' ? body.narration.trim() : null;
   const lang = body.lang === undefined ? 'ko' : parseLang(body.lang);
-  if (!contentId || !title || !summary || !narration || !lang) {
-    return invalid('contentId, title, summary, narration와 지원 언어가 필요합니다.');
+  if (!contentId || !title || !summary || !lang) {
+    return invalid('contentId, title, summary와 지원 언어가 필요합니다.');
   }
+  if (narration === null || narration.length > 6000) return invalid('narration은 최대 6000자의 문자열이어야 합니다.');
 
   const image = parseOptionalAsset(body, 'imageUrl');
   if (!image.ok) return image;
@@ -154,10 +170,11 @@ export function validateAdminShortCreate(input: unknown): Validation<AdminShortC
   if (durationSeconds === null || tags === null || typeof isPublished !== 'boolean') {
     return invalid('durationSeconds, tags 또는 isPublished 값이 유효하지 않습니다.');
   }
-  const hasVideoSource = Boolean(video.value?.videoUrl || video.value?.youtubeVideoId);
-  if (!image.value && !hasVideoSource) {
-    return invalid('imageUrl 또는 영상 소스 중 하나는 필요합니다.');
-  }
+  const media = validateAdminShortMedia({
+    imageUrl: image.value ?? null, videoUrl: video.value?.videoUrl ?? null,
+    youtubeVideoId: video.value?.youtubeVideoId ?? null, narration
+  });
+  if (!media.ok) return media;
 
   return {
     ok: true,
@@ -188,13 +205,18 @@ export function validateAdminShortPatch(input: unknown): Validation<AdminShortPa
 
   const patch: AdminShortPatch = { shortId: body.shortId };
   for (const [key, maxLength] of [
-    ['contentId', 200], ['title', 120], ['summary', 600], ['narration', 6000]
+    ['contentId', 200], ['title', 120], ['summary', 600]
   ] as const) {
     if (Object.prototype.hasOwnProperty.call(body, key)) {
       const text = cleanText(body[key], maxLength);
       if (!text) return invalid(`${key} 값이 유효하지 않습니다.`);
       patch[key] = text;
     }
+  }
+  if (Object.prototype.hasOwnProperty.call(body, 'narration')) {
+    if (typeof body.narration !== 'string' || body.narration.trim().length > 6000) return invalid('narration은 최대 6000자의 문자열이어야 합니다.');
+    // Whether empty text is playable depends on the merged stored video source.
+    patch.narration = body.narration.trim();
   }
   if (Object.prototype.hasOwnProperty.call(body, 'lang')) {
     const lang = parseLang(body.lang);
@@ -269,4 +291,20 @@ export function adminShortUpdateColumns(value: AdminShortPatch, placeId?: string
 export function adminRateLimitActor(forwardedFor: string | null, realIp: string | null): string {
   const source = (forwardedFor?.split(',')[0]?.trim() || realIp?.trim() || 'unknown').slice(0, 128);
   return `admin:${createHash('sha256').update(source).digest('hex').slice(0, 32)}`;
+}
+
+export function mapAdminShortRow(row: Record<string, unknown>): AdminShortItem {
+  const place = Array.isArray(row.places) ? row.places[0] : row.places;
+  const linked = recordFrom(place);
+  const optionalText = (value: unknown) => typeof value === 'string' && value ? value : null;
+  return {
+    id: String(row.id), contentId: String(linked?.content_id ?? row.place_id ?? ''),
+    lang: parseLang(row.lang) ?? 'ko', title: String(row.title ?? ''), summary: String(row.summary ?? ''),
+    narration: String(row.narration ?? ''), imageUrl: optionalText(row.image_url),
+    audioUrl: optionalText(row.audio_url), videoUrl: optionalText(row.video_url),
+    youtubeVideoId: optionalText(row.youtube_video_id), durationSeconds: Number(row.duration_seconds ?? 60),
+    tags: Array.isArray(row.tags) ? row.tags.filter((tag): tag is string => typeof tag === 'string') : [],
+    isPublished: row.is_published === true, isAiGenerated: Boolean(row.narration_id),
+    createdAt: String(row.created_at ?? ''), updatedAt: String(row.updated_at ?? '')
+  };
 }

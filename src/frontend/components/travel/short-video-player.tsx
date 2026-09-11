@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
-import { Pause, Play, Volume2, VolumeX } from 'lucide-react';
+import { LoaderCircle, Pause, Play, Volume2, VolumeX } from 'lucide-react';
 import { resolveShortVideoSource } from '@/shared/shorts-video';
 import type { ShortItem } from '@/shared/types';
 import { uiMessages } from '@/shared/ui-messages';
@@ -34,6 +34,7 @@ export function ShortVideoPlayer({ item, active, autoPlay, labels }: Props) {
   const [posterFailed, setPosterFailed] = useState(false);
   const [youtubeReady, setYoutubeReady] = useState(false);
   const [youtubeLoaded, setYoutubeLoaded] = useState(false);
+  const [mediaBuffering, setMediaBuffering] = useState(false);
   const desiredPlaying = active && (playOverride ?? autoPlay) && !failed;
 
   const youtubeUrl = useMemo(() => {
@@ -70,13 +71,19 @@ export function ShortVideoPlayer({ item, active, autoPlay, labels }: Props) {
           commandYouTube('addEventListener', ['onError']);
           commandYouTube('addEventListener', ['onStateChange']);
         }
-        if (payload?.event === 'onStateChange') setPlaying(payload.info === 1);
+        // YouTube player state 3 is buffering; 1 is playing.
+        if (payload?.event === 'onStateChange') {
+          setPlaying(payload.info === 1);
+          setMediaBuffering(payload.info === 3);
+        }
         if (payload?.event === 'infoDelivery' && typeof payload.info?.playerState === 'number') {
           setPlaying(payload.info.playerState === 1);
+          setMediaBuffering(payload.info.playerState === 3);
         }
         if (payload?.event === 'onError') {
           setFailed(true);
           setPlaying(false);
+          setMediaBuffering(false);
         }
       } catch {
         // Ignore unrelated messages from the embedded player.
@@ -164,6 +171,8 @@ export function ShortVideoPlayer({ item, active, autoPlay, labels }: Props) {
   }
 
   const hasVideo = source.kind !== 'none' && !failed;
+  // The embed reports nothing until its API handshake lands, so count that wait as buffering.
+  const buffering = hasVideo && (mediaBuffering || (source.kind === 'youtube' && desiredPlaying && !youtubeReady));
   return (
     <div className="absolute inset-0 bg-[#292c30]">
       <img
@@ -188,9 +197,14 @@ export function ShortVideoPlayer({ item, active, autoPlay, labels }: Props) {
           className="absolute inset-0 h-full w-full object-cover outline outline-1 -outline-offset-1 outline-white/10"
           onPlay={() => setPlaying(true)}
           onPause={() => setPlaying(false)}
+          onWaiting={() => setMediaBuffering(true)}
+          onStalled={() => setMediaBuffering(true)}
+          onPlaying={() => setMediaBuffering(false)}
+          onCanPlay={() => setMediaBuffering(false)}
           onError={() => {
             setFailed(true);
             setPlaying(false);
+            setMediaBuffering(false);
           }}
         />
       )}
@@ -218,6 +232,13 @@ export function ShortVideoPlayer({ item, active, autoPlay, labels }: Props) {
       <div className="absolute left-3 top-3 z-10 rounded-full bg-black/55 px-2.5 py-1 text-[10px] font-black tabular-nums text-white shadow-sm ring-1 ring-white/10 backdrop-blur">
         {formatDuration(item.durationSeconds)}
       </div>
+
+      {buffering && (
+        <div className="pointer-events-none absolute inset-0 z-10 grid place-items-center">
+          <LoaderCircle size={34} aria-hidden="true" className="animate-spin text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.55)]" />
+          <span role="status" className="sr-only">{ui.buffering}</span>
+        </div>
+      )}
 
       {failed && (
         <p role="status" className="absolute left-3 right-3 top-14 z-10 rounded-xl bg-black/65 px-3 py-2 text-pretty text-[10px] font-bold text-white backdrop-blur">

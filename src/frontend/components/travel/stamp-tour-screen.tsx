@@ -154,7 +154,7 @@ export function StampTourScreen({ places, onExplore, onBack }: Props) {
     setBadgeWarning(false);
     try {
       const [stampResponse, badgeResponse] = await Promise.all([
-        fetch('/api/stamps', { cache: 'no-store' }),
+        fetch(`/api/stamps?lang=${locale}`, { cache: 'no-store' }),
         fetch(`/api/badges?lang=${locale}`, { cache: 'no-store' })
       ]);
       const stampPayload = await stampResponse.json().catch(() => null);

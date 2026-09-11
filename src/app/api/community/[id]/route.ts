@@ -10,7 +10,8 @@ import {
   isErrorContext,
   isUuid,
   parseBody,
-  rateLimitError
+  rateLimitError,
+  resolvePlaceId
 } from '@/backend/http';
 import { moderateContent } from '@/backend/openai';
 import { createSupabaseAdminClient } from '@/backend/supabase/admin';
@@ -24,6 +25,7 @@ type PatchBody = {
   title?: string;
   content?: string;
   rating?: number | null;
+  contentId?: string | null;
 };
 
 const COMMUNITY_UNAVAILABLE_MESSAGE = '커뮤니티 서비스에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.';
@@ -80,6 +82,9 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
   if (body.content !== undefined && typeof body.content !== 'string') {
     return apiError('INVALID_BODY', '내용 형식이 올바르지 않습니다.');
   }
+  if (body.contentId !== undefined && body.contentId !== null && (typeof body.contentId !== 'string' || !body.contentId.trim())) {
+    return apiError('INVALID_BODY', '장소 ID가 올바르지 않습니다.');
+  }
   const ratingSupplied = Object.prototype.hasOwnProperty.call(body, 'rating');
   if (ratingSupplied && body.rating !== null && (!Number.isInteger(body.rating) || Number(body.rating) < 1 || Number(body.rating) > 5)) {
     return apiError('INVALID_RATING', '별점은 1~5 사이여야 합니다.');
@@ -90,7 +95,7 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
 
   const { data: owned } = await context.db
     .from('community_posts')
-    .select('category, title, content, rating')
+    .select('category, title, content, rating, place_id')
     .eq('id', id)
     .eq('actor_key', context.user.actorKey)
     .maybeSingle();
@@ -103,6 +108,14 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
   const title = body.title?.trim() || String(owned.title);
   const content = body.content?.trim() || String(owned.content);
   const rating = category === 'tip' ? null : ratingSupplied ? body.rating : owned.rating;
+  const placeSupplied = Object.prototype.hasOwnProperty.call(body, 'contentId');
+  const placeId = placeSupplied ? (body.contentId ? await resolvePlaceId(context.db, body.contentId.trim()) : null) : owned.place_id;
+  if (body.contentId && !placeId) return apiError('PLACE_NOT_FOUND', '연결할 관광지를 찾을 수 없습니다.', 404);
+  if (category === 'food' || category === 'lodging') {
+    if (!placeId || rating == null) return apiError('REVIEW_PLACE_REQUIRED', '맛집·숙소 평가에는 방문한 장소와 별점이 필요합니다.');
+    const { data: place } = await context.db.from('places').select('category').eq('id', placeId).maybeSingle();
+    if (place?.category !== category) return apiError('INVALID_REVIEW_PLACE', '평가 종류와 방문한 장소가 일치하지 않습니다.');
+  }
   if (rating !== null && (!Number.isInteger(rating) || rating < 1 || rating > 5)) {
     return apiError('INVALID_RATING', '별점은 1~5 사이여야 합니다.');
   }
@@ -121,6 +134,7 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     .from('community_posts')
     .update({
       category,
+      ...(placeSupplied ? { place_id: placeId } : {}),
       title: title.slice(0, 120),
       content: content.slice(0, 5000),
       rating,

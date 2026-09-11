@@ -1,9 +1,10 @@
 import { expect, test } from '@playwright/test';
+import { loginForBrowser } from './helpers';
 
 test.beforeEach(async ({ page }) => {
-  const loginResponse = await page.request.post('/api/auth/demo');
-  expect(loginResponse.status()).toBe(200);
-  await page.goto('/');
+  await loginForBrowser(page);
+  const homeResponse = await page.goto('/');
+  expect(homeResponse?.status()).toBe(200);
   await expect(page).toHaveURL('/');
 });
 
@@ -15,9 +16,10 @@ test('language, map, detail, AI narration surface', async ({ page }) => {
     const localeCookie = (await page.context().cookies()).find(cookie => cookie.name === 'dal_bbam_locale');
     return localeCookie?.value;
   }).toBe('en');
-  await page.goto('/map');
+  await page.locator('nav a[href="/map"]').click();
+  await expect(page).toHaveURL('/map');
   await expect(page.getByRole('heading', { name: 'Gyeongju map' })).toBeVisible();
-  await page.getByRole('link', { name: /상세 보기/ }).first().click();
+  await page.getByRole('link', { name: /View details/ }).first().click();
   await expect(page.getByRole('button', { name: 'AI narration' })).toBeVisible();
 });
 
@@ -35,6 +37,11 @@ test('home category navigation preserves the selected map filter in the URL', as
   await expect(page.getByRole('heading', { name: '경주 지도' })).toBeVisible();
   await expect(page.getByRole('button', { name: '맛집', exact: true })).toHaveClass(/bg-\[#b94f4a\]/);
 });
+
+test.describe('Mocked private data flows', () => {
+// WebKit's Service Worker request handling can bypass page.route even when
+// the worker does not cache that URL. Cache behavior is tested separately.
+test.use({ serviceWorkers: 'block' });
 
 test('schedule metadata and order can be edited without drag gestures', async ({ page }) => {
   let schedule = {
@@ -117,7 +124,7 @@ test('stamp verification asks for consent and only renders a persisted success',
   let acquiredContentId = '';
 
   await context.grantPermissions(['geolocation'], { origin: 'http://127.0.0.1:3200' });
-  await context.setGeolocation({ latitude: 35.8562, longitude: 129.2247 });
+  await context.setGeolocation({ latitude: 35.8562, longitude: 129.2247, accuracy: 20 });
   await page.route('**/api/location-consent', async route => {
     if (route.request().method() === 'GET') {
       await route.fulfill({
@@ -153,7 +160,7 @@ test('stamp verification asks for consent and only renders a persisted success',
       })
     });
   });
-  await page.route('**/api/stamps', async route => {
+  await page.route(/\/api\/stamps(?:\?.*)?$/, async route => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -202,6 +209,8 @@ test('stamp verification asks for consent and only renders a persisted success',
   await expect(page.getByText(/현장 확인 완료 · 거리 12m/)).toBeVisible();
 });
 
+});
+
 test('private API responses are not reused by the service worker cache', async ({ page }) => {
   await page.waitForLoadState('networkidle');
   await expect.poll(async () => page.evaluate(async () => {
@@ -214,5 +223,84 @@ test('private API responses are not reused by the service worker cache', async (
     const requests = (await Promise.all(keys.map(async key => (await caches.open(key)).keys()))).flat();
     return requests.map(request => new URL(request.url).pathname);
   });
-  expect(cachedUrls.some(path => ['/api/cart', '/api/schedules', '/api/stamps'].some(privatePath => path.startsWith(privatePath)))).toBe(false);
+  expect(cachedUrls.some(path => ['/api/cart', '/api/schedules', '/api/stamps', '/api/home/personalized'].some(privatePath => path.startsWith(privatePath)))).toBe(false);
+});
+
+test('all four languages persist across navigation with no horizontal overflow', async ({ page }, testInfo) => {
+  test.slow();
+  for (const [button, code, heading] of [
+    ['English', 'en', 'Gyeongju map'], ['日本語', 'ja', '慶州地図'],
+    ['中文', 'zh', '庆州地图'], ['한국어', 'ko', '경주 지도']
+  ]) {
+    const languageButton = page.getByRole('button', { name: button, exact: true });
+    await languageButton.click();
+    await expect(languageButton).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('html')).toHaveAttribute('lang', code);
+    await expect.poll(async () => {
+      const localeCookie = (await page.context().cookies()).find(cookie => cookie.name === 'dal_bbam_locale');
+      return localeCookie?.value;
+    }).toBe(code);
+    if (new URL(page.url()).pathname === '/map') {
+      await page.locator('nav a[href="/"]').click();
+      await expect(page).toHaveURL('/');
+    }
+    await page.locator('nav a[href="/map"]').click();
+    await expect(page).toHaveURL('/map');
+    await expect(page.getByRole('heading', { name: heading })).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath(`map-${code}.png`), fullPage: true });
+  }
+});
+
+test('offline screen exposes cached public place details and opening hours', async ({ page, context, browserName }) => {
+  // An active registration (ready) can precede clients.claim(), especially in
+  // WebKit. Go offline only once the current document is actually controlled.
+  await page.waitForFunction(() => Boolean(navigator.serviceWorker.controller));
+  expect(await page.evaluate(async () => Boolean(await caches.match('/offline')))).toBe(true);
+  await page.evaluate(async () => {
+    await navigator.serviceWorker.ready;
+    const cache = await caches.open('gyeongju-travel-public-v5');
+    await cache.put('/api/places/offline-fixture?lang=ko', new Response(JSON.stringify({ data: {
+      contentId: 'offline-fixture', name: '오프라인 관광지', address: '경주시', overview: '저장된 역사 이야기', openingHours: '09:00–18:00'
+    } }), { headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public' } }));
+  });
+  // Playwright WebKit rejects offline navigation before its service worker
+  // handles the request. The owned local proxy instead drops app connections.
+  const useProxyOutage = browserName === 'webkit' && !process.env.PLAYWRIGHT_BASE_URL;
+  const setOffline = async (offline: boolean) => {
+    if (useProxyOutage) {
+      const response = await page.request.post('/__e2e/network', { data: { offline } });
+      expect(response.ok()).toBe(true);
+    } else {
+      await context.setOffline(offline);
+    }
+  };
+  try {
+    await setOffline(true);
+    await page.goto('/offline');
+    await expect(page.getByText('오프라인 관광지', { exact: true })).toBeVisible();
+    await page.getByText('오프라인 관광지', { exact: true }).click();
+    await expect(page.getByText('저장된 역사 이야기')).toBeVisible();
+    await expect(page.getByText(/09:00–18:00/)).toBeVisible();
+  } finally {
+    await setOffline(false);
+  }
+});
+
+test.describe('API rendering measurement', () => {
+test.use({ serviceWorkers: 'block' });
+test('place details render within one second after the API payload arrives', async ({ page }) => {
+  let returnedAt = 0;
+  await page.route('**/api/places/render-test?*', async route => {
+    returnedAt = Date.now();
+    await route.fulfill({ json: { data: {
+      contentId: 'render-test', name: '렌더링 확인 관광지', category: 'heritage', address: '경주',
+      description: '렌더링 시간 검증', overview: '렌더링 시간 검증', imageUrl: '/icon.svg', images: [], tags: [], coordinates: [35.8, 129.2], source: 'sample'
+    } } });
+  });
+  await page.goto('/places/render-test');
+  await expect(page.getByRole('heading', { name: '렌더링 확인 관광지' })).toBeVisible();
+  expect(returnedAt).toBeGreaterThan(0);
+  expect(Date.now() - returnedAt).toBeLessThan(1000);
+});
 });

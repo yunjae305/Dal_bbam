@@ -12,6 +12,7 @@ import {
   type MapPlace
 } from '@/frontend/components/travel/kakao-map-explorer';
 import { useLocale } from '@/frontend/i18n/locale-context';
+import { exploreMessages } from '@/shared/explore-messages';
 
 type KakaoPlaceResult = {
   id: string;
@@ -39,20 +40,22 @@ const kakaoCategory: Record<Category, string> = {
   experience: 'AT4'
 };
 
-function placeCategory(result: KakaoPlaceResult, selected: Category): PlaceCategory {
-  if (selected !== 'all') return selected;
+function placeCategory(result: KakaoPlaceResult): PlaceCategory {
   if (result.categoryGroupCode === 'FD6' || result.categoryName.includes('음식')) return 'food';
   if (result.categoryGroupCode === 'AD5' || result.categoryName.includes('숙박')) return 'lodging';
-  if (result.categoryName.includes('문화') || result.categoryName.includes('유적')) return 'heritage';
+  if (/(?:문화유적|유적지|문화재|고궁|고분|왕릉|사찰|박물관)/.test(result.categoryName)) return 'heritage';
+  if (/(?:자연|국립공원|도립공원|해수욕장|해변|수목원|식물원|산림|휴양림|호수|폭포)/.test(result.categoryName)) return 'nature';
+  if (/(?:축제|페스티벌)/.test(result.categoryName)) return 'festival';
+  if (/(?:체험|레포츠|수상레저)/.test(result.categoryName)) return 'experience';
   return 'attraction';
 }
 
-function toMapPlace(result: KakaoPlaceResult, selected: Category): MapPlace {
+function toMapPlace(result: KakaoPlaceResult): MapPlace {
   const address = result.roadAddress || result.address;
   return {
     id: `kakao:${result.id}`,
     contentId: `kakao:${result.id}`,
-    category: placeCategory(result, selected),
+    category: placeCategory(result),
     name: result.name,
     description: result.categoryName,
     address,
@@ -69,7 +72,8 @@ function toMapPlace(result: KakaoPlaceResult, selected: Category): MapPlace {
 }
 
 export function MapPageScreen({ places }: { places: Place[] }) {
-  const { messages } = useLocale();
+  const { locale, messages } = useLocale();
+  const ui = exploreMessages[locale];
   const searchParams = useSearchParams();
   const requestedCategory = searchParams.get('category');
   const initialCategory: Category = placeCategories.includes(requestedCategory as PlaceCategory)
@@ -119,7 +123,10 @@ export function MapPageScreen({ places }: { places: Place[] }) {
         error?: { message?: string };
       };
       if (!response.ok) throw new Error(payload.error?.message ?? messages.map.kakaoSearchFailed);
-      const next = (payload.data?.places ?? []).map(place => toMapPlace(place, nextCategory));
+      // AT4 is a broad tourist-attraction group, not evidence for the selected
+      // heritage/nature/festival layer. Keep only provider-classified matches.
+      const next = (payload.data?.places ?? []).map(toMapPlace)
+        .filter(place => nextCategory === 'all' || place.category === nextCategory);
       setKakaoPlaces(next);
       if (next[0]) setSelectedId(next[0].contentId);
     } catch (error) {
@@ -183,13 +190,13 @@ export function MapPageScreen({ places }: { places: Place[] }) {
         <div className="mt-4 space-y-2">
           {visible.map(place => (
             <article key={place.contentId} className={`grid grid-cols-[72px_1fr] gap-3 rounded-xl p-2 ${selected?.contentId === place.contentId ? 'bg-[#fff0eb] ring-1 ring-[#b94f4a]/30' : 'bg-white'}`}>
-              <button type="button" onClick={() => setSelectedId(place.contentId)} aria-label={`${place.name} 지도에서 선택`} className="text-left">
+              <button type="button" onClick={() => setSelectedId(place.contentId)} aria-label={ui.selectOnMap.replace('{name}', place.name)} className="text-left">
                 {place.kakaoPlaceId ? (
                   <span className="grid h-16 w-[72px] place-items-center rounded-lg bg-[#e8f2ed] text-[#2f7567]">
                     <MapPin size={25} />
                   </span>
                 ) : (
-                  <img src={place.image} alt={place.name} className="h-16 w-[72px] rounded-lg object-cover" />
+                  <img src={place.image} alt={place.name} loading="lazy" width={72} height={64} className="h-16 w-[72px] rounded-lg object-cover" />
                 )}
               </button>
               <div className="min-w-0">
@@ -200,7 +207,7 @@ export function MapPageScreen({ places }: { places: Place[] }) {
                 {place.kakaoPlaceUrl ? (
                   <a href={place.kakaoPlaceUrl} target="_blank" rel="noreferrer" className="mt-2 inline-block text-[9px] font-black text-[#2f7567]">{messages.map.kakaoDetail} →</a>
                 ) : (
-                  <Link href={`/places/${encodeURIComponent(place.contentId)}`} className="mt-2 inline-block text-[9px] font-black text-[#b94f4a]">상세 보기 →</Link>
+                  <Link href={`/places/${encodeURIComponent(place.contentId)}`} className="mt-2 inline-block text-[9px] font-black text-[#b94f4a]">{ui.detail} →</Link>
                 )}
               </div>
             </article>

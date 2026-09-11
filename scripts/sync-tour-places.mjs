@@ -1,4 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
+import categoryCodes from '../src/shared/tour-category-codes.json' with { type: 'json' };
+import { defaultStampContentIds } from '../src/shared/stamp-seed.ts';
 
 const required = ['NEXT_PUBLIC_SUPABASE_URL', 'SUPABASE_SECRET_KEY', 'TOUR_API_KEY'];
 for (const name of required) {
@@ -13,15 +15,7 @@ const supabase = createClient(
 
 const baseUrl = 'https://apis.data.go.kr/B551011/KorService2/locationBasedList2';
 const contentTypes = ['12', '14', '15', '28', '32', '38', '39'];
-const categoryByType = {
-  12: 'attraction',
-  14: 'heritage',
-  15: 'festival',
-  28: 'experience',
-  32: 'lodging',
-  38: 'attraction',
-  39: 'food'
-};
+const categoryByType = categoryCodes.contentType;
 
 const MAX_PAGES_PER_TYPE = 5;
 const PAGE_SIZE = 100;
@@ -69,7 +63,7 @@ function collectRows(rows, contentTypeId) {
     all.push({
       content_id: String(row.contentid),
       content_type_id: typeId,
-      category: categoryByType[typeId] ?? 'attraction',
+      category: (typeId === '12' ? categoryCodes.cat2[row.cat2] ?? categoryCodes.cat1[row.cat1] : null) ?? categoryByType[typeId] ?? 'attraction',
       name: String(row.title),
       address: [row.addr1, row.addr2].filter(Boolean).join(' '),
       lat: Number(row.mapy) || null,
@@ -295,22 +289,17 @@ for (let index = 0; index < translationRows.length; index += 100) {
 }
 
 // A fresh database applies migrations before places exist. Seed a deliberate
-// launch stamp catalogue after the place upsert instead of activating every
-// restaurant, lodging and attraction as a stamp target.
+// launch stamp catalogue after the place upsert: landmark history stops and a
+// small deterministic selection of food/nature stops from actual synced data.
 const configuredStampContentIds = [...new Set(
   (process.env.STAMP_TARGET_CONTENT_IDS ?? '')
     .split(',')
     .map(value => value.trim())
     .filter(Boolean)
 )];
-const defaultStampNames = ['첨성대', '불국사', '대릉원', '동궁과 월지', '월정교', '국립경주박물관', '교촌마을'];
 const stampContentIds = [...new Set(configuredStampContentIds.length
   ? configuredStampContentIds
-  : defaultStampNames.flatMap(name => {
-      const match = unique.find(row => row.name === name)
-        ?? unique.find(row => String(row.name).includes(name));
-      return match ? [String(match.content_id)] : [];
-    }))];
+  : defaultStampContentIds(unique))];
 const missingStampContentIds = stampContentIds.filter(contentId => !placeIdByContentId.has(contentId));
 if (missingStampContentIds.length) {
   throw new Error(`STAMP_TARGET_CONTENT_IDS were not found after sync: ${missingStampContentIds.join(', ')}`);

@@ -20,6 +20,7 @@ export default defineConfig([
     '.next/**',
     '**/.next/**',
     'playwright-report/**',
+    '.playwright-browsers/**',
     'coverage/**',
     'out/**',
     'build/**',

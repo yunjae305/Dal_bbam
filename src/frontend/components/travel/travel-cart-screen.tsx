@@ -6,8 +6,9 @@ import type { Category, Place, PlaceCategory } from '@/shared/types';
 import { PhoneStatus, HeaderBar } from '@/frontend/components/common/ui';
 import { EmptyState } from '@/frontend/components/common/feedback';
 import { useLocale } from '@/frontend/i18n/locale-context';
-import { todayLocalDate } from '@/frontend/schedule-utils';
+import { dateRange, todayLocalDate } from '@/frontend/schedule-utils';
 import { uiMessages } from '@/shared/ui-messages';
+import { plannerMessages } from '@/shared/planner-messages';
 
 type Props = { places: Place[]; userEmail?: string | null };
 type CartRow = {
@@ -25,11 +26,14 @@ type CartRow = {
 };
 type ScheduleRow = {
   id: string;
+  title: string;
   start_date: string;
+  end_date: string;
   schedule_places?: Array<{
     visit_date: string;
     start_time?: string;
     stay_minutes: number;
+    sort_order?: number;
     note?: string;
     places: { content_id: string };
   }>;
@@ -38,6 +42,7 @@ type ScheduleRow = {
 export function TravelCartScreen({ places, userEmail }: Props) {
   const { locale, messages } = useLocale();
   const ui = uiMessages[locale].cart;
+  const planner = plannerMessages[locale];
   const [items, setItems] = useState<CartRow[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState<Category>('all');
@@ -45,6 +50,11 @@ export function TravelCartScreen({ places, userEmail }: Props) {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
+  const [schedules, setSchedules] = useState<ScheduleRow[]>([]);
+  const [targetId, setTargetId] = useState('');
+  const [targetDate, setTargetDate] = useState(todayLocalDate);
+  const targetSchedule = schedules.find(schedule => schedule.id === targetId);
+  const targetDates = targetSchedule ? dateRange(targetSchedule.start_date, targetSchedule.end_date) : [];
 
   const categories = useMemo(
     () => Array.from(new Set(items.map(item => item.places.category))),
@@ -70,7 +80,16 @@ export function TravelCartScreen({ places, userEmail }: Props) {
     }
   }
 
-  useEffect(() => { void loadCart(); }, []);
+  useEffect(() => {
+    void loadCart();
+    void fetch('/api/schedules', { cache: 'no-store' }).then(async response => {
+      if (!response.ok) return;
+      const payload = await response.json();
+      const loaded: ScheduleRow[] = payload.data ?? [];
+      setSchedules(loaded);
+      if (loaded[0]) { setTargetId(loaded[0].id); setTargetDate(loaded[0].start_date); }
+    }).catch(() => {});
+  }, []);
 
   async function addPlace() {
     if (!placeToAdd) return;
@@ -134,9 +153,10 @@ export function TravelCartScreen({ places, userEmail }: Props) {
       const schedulesResponse = await fetch('/api/schedules', { cache: 'no-store' });
       const schedulesPayload = await schedulesResponse.json();
       if (!schedulesResponse.ok) throw new Error(schedulesPayload?.error?.message ?? ui.scheduleLoadFailed);
-      let schedule = schedulesPayload.data[0] as ScheduleRow | undefined;
+      let schedule = (schedulesPayload.data as ScheduleRow[]).find(item => item.id === targetId);
+      if (targetId && !schedule) throw new Error(ui.schedulePrepareFailed);
       if (!schedule) {
-        const today = todayLocalDate();
+        const today = targetDate || todayLocalDate();
         const createResponse = await fetch('/api/schedules', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -145,24 +165,30 @@ export function TravelCartScreen({ places, userEmail }: Props) {
         const createPayload = await createResponse.json();
         if (!createResponse.ok) throw new Error(createPayload?.error?.message ?? ui.scheduleCreateFailed);
         schedule = { ...createPayload.data, schedule_places: [] };
+        if (schedule) {
+          setSchedules(current => [schedule as ScheduleRow, ...current]);
+          setTargetId(schedule.id);
+        }
       }
       if (!schedule) throw new Error(ui.schedulePrepareFailed);
       const targetSchedule = schedule;
 
-      const existing = targetSchedule.schedule_places ?? [];
-      const existingIds = new Set(existing.map(item => item.places.content_id));
+      const existing = [...(targetSchedule.schedule_places ?? [])].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+      const visitDate = targetDate || targetSchedule.start_date;
+      if (visitDate < targetSchedule.start_date || visitDate > targetSchedule.end_date) throw new Error(ui.schedulePrepareFailed);
+      const existingIds = new Set(existing.filter(item => item.visit_date === visitDate).map(item => item.places.content_id));
       const additions = selectedItems.filter(item => !existingIds.has(item.places.content_id));
       const nextItems = [
         ...existing.map(item => ({
           contentId: item.places.content_id,
           visitDate: item.visit_date,
-          startTime: item.start_time || undefined,
+          startTime: item.start_time?.slice(0, 5) || undefined,
           stayMinutes: item.stay_minutes,
           note: item.note || undefined
         })),
         ...additions.map(item => ({
           contentId: item.places.content_id,
-          visitDate: targetSchedule.start_date,
+          visitDate,
           stayMinutes: 60
         }))
       ];
@@ -189,7 +215,7 @@ export function TravelCartScreen({ places, userEmail }: Props) {
       <HeaderBar title={ui.header} right={<Heart size={18} className="text-[#ff5146]" fill="currentColor" />} />
       <div className="px-5 pb-36">
         <div className="mt-3 flex gap-2">
-          <select value={placeToAdd} onChange={event => setPlaceToAdd(event.target.value)} className="h-10 min-w-0 flex-1 rounded-xl bg-white px-3 text-[11px] font-bold ring-1 ring-black/5">
+          <select value={placeToAdd} aria-label={planner.pickPlace} onChange={event => setPlaceToAdd(event.target.value)} className="h-11 min-w-0 flex-1 rounded-xl bg-white px-3 text-[11px] font-bold ring-1 ring-black/5">
             {places.map(place => <option key={place.contentId} value={place.contentId}>{place.name}</option>)}
           </select>
           <button type="button" onClick={addPlace} disabled={busy} className="flex h-10 items-center gap-1 rounded-xl bg-[#ff5b4f] px-4 text-[10px] font-black text-white disabled:opacity-50">
@@ -198,6 +224,10 @@ export function TravelCartScreen({ places, userEmail }: Props) {
         </div>
 
         {notice && <p className="mt-3 rounded-xl bg-[#fff3ef] p-3 text-[10px] font-bold text-[#9b4e45]" role="status">{notice}</p>}
+        <div className="mt-4 grid grid-cols-2 gap-3 rounded-xl bg-white p-3">
+          <label className="text-[10px] font-bold">{planner.targetSchedule}<select value={targetId} disabled={busy} onChange={event => { const id = event.target.value; setTargetId(id); setTargetDate(schedules.find(schedule => schedule.id === id)?.start_date ?? todayLocalDate()); }} className="mt-2 h-11 w-full min-w-0 rounded-lg bg-[#f4f5f6] px-2 text-[11px]"><option value="">{planner.newSchedule}</option>{schedules.map(schedule => <option key={schedule.id} value={schedule.id}>{schedule.title}</option>)}</select></label>
+          <label className="text-[10px] font-bold">{planner.targetDate}{targetId ? <select value={targetDate} disabled={busy} onChange={event => setTargetDate(event.target.value)} className="mt-2 h-11 w-full min-w-0 rounded-lg bg-[#f4f5f6] px-2 text-[11px]">{targetDates.map(date => <option key={date} value={date}>{date}</option>)}</select> : <input type="date" disabled={busy} value={targetDate} onChange={event => setTargetDate(event.target.value)} className="mt-2 h-11 w-full min-w-0 rounded-lg bg-[#f4f5f6] px-2 text-[11px]" />}</label>
+        </div>
 
         <div className="mt-4 flex gap-2 overflow-x-auto pb-1">
           <button type="button" onClick={() => setFilter('all')} className={`shrink-0 rounded-full px-4 py-2 text-[10px] font-black ${filter === 'all' ? 'bg-[#ff5b4f] text-white' : 'bg-[#f1f2f4]'}`}>

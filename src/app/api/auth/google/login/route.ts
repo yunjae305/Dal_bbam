@@ -1,29 +1,33 @@
-import { createServerClient } from '@supabase/ssr';
-import { cookies } from 'next/headers';
-import { getSupabaseEnv } from '@/backend/supabase/env';
+import { createSupabaseServerClient } from '@/backend/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
+import { getAuthProviderCapabilities } from '@/backend/auth/providers';
+
+function unavailable(request: NextRequest, error: string) {
+  const response = NextResponse.redirect(new URL(`/login?error=${error}`, request.url));
+  response.headers.set('Cache-Control', 'no-store');
+  return response;
+}
+
+/** Proxied deployments keep the public host in a forwarded header, not in the request URL. */
+function publicOrigin(request: NextRequest) {
+  const host = request.headers.get('x-forwarded-host') ?? request.headers.get('host');
+  if (!host) return request.nextUrl.origin;
+  const protocol = request.headers.get('x-forwarded-proto')
+    ?? (host.startsWith('localhost') || host.startsWith('127.0.0.1') ? 'http' : 'https');
+  return `${protocol}://${host}`;
+}
 
 export async function GET(request: NextRequest) {
-  const env = getSupabaseEnv();
-  if (!env.url || !env.publishableKey) {
-    return NextResponse.redirect(new URL('/login?error=google_not_configured', request.url));
+  if (!(await getAuthProviderCapabilities()).google) {
+    return unavailable(request, 'google_not_configured');
+  }
+  const supabase = await createSupabaseServerClient();
+  if (!supabase) {
+    return unavailable(request, 'google_not_configured');
   }
 
-  const cookieStore = await cookies();
-  const cookiesToSet: Array<{ name: string; value: string; options: Record<string, unknown> }> = [];
-
-  const supabase = createServerClient(env.url, env.publishableKey, {
-    cookies: {
-      getAll() { return cookieStore.getAll(); },
-      setAll(toSet) { cookiesToSet.push(...toSet); }
-    }
-  });
-
-  const host = request.headers.get('host') ?? 'localhost:3000';
-  const protocol = host.startsWith('localhost') ? 'http' : 'https';
-  const callback = new URL('/api/auth/callback', `${protocol}://${host}`);
+  const callback = new URL('/api/auth/callback', publicOrigin(request));
   callback.searchParams.set('next', '/');
-
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: 'google',
     options: { redirectTo: callback.toString(), skipBrowserRedirect: true }
@@ -31,13 +35,10 @@ export async function GET(request: NextRequest) {
 
   if (error || !data.url) {
     console.error('[google-login] authorization URL failed', error?.message);
-    return NextResponse.redirect(new URL('/login?error=google_authorization_failed', request.url));
+    return unavailable(request, 'google_authorization_failed');
   }
 
   const response = NextResponse.redirect(data.url);
   response.headers.set('Cache-Control', 'no-store');
-  cookiesToSet.forEach(({ name, value, options }) => {
-    response.cookies.set(name, value, options as Parameters<typeof response.cookies.set>[2]);
-  });
   return response;
 }

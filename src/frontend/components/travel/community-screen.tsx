@@ -1,9 +1,10 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useMemo, useState, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { Bookmark, LoaderCircle, MapPin, Pencil, Plus, Search, Star, Trash2 } from 'lucide-react';
-import type { CommunityPost } from '@/shared/types';
+import { placeCategories, type CommunityPost, type PlaceCategory } from '@/shared/types';
+import { communityCopy } from '@/shared/community';
 import { EmptyState, ErrorState, SkeletonBox } from '@/frontend/components/common/feedback';
 import { CommunityPostEditor } from '@/frontend/components/travel/community-post-editor';
 import { useLocale } from '@/frontend/i18n/locale-context';
@@ -12,6 +13,7 @@ import { uiMessages } from '@/shared/ui-messages';
 export function CommunityScreen() {
   const { locale, messages } = useLocale();
   const ui = uiMessages[locale].community;
+  const copy = communityCopy[locale];
   const categoryOptions: Array<{ value: CommunityPost['category'] | ''; label: string }> = [
     { value: '', label: ui.all },
     { value: 'review', label: ui.review },
@@ -29,6 +31,9 @@ export function CommunityScreen() {
   const [category, setCategory] = useState<CommunityPost['category'] | ''>('');
   const [bookmarkedOnly, setBookmarkedOnly] = useState(false);
   const [query, setQuery] = useState('');
+  const [regionInput, setRegionInput] = useState('');
+  const [region, setRegion] = useState('');
+  const [placeCategory, setPlaceCategory] = useState<PlaceCategory | ''>('');
   const [editorPost, setEditorPost] = useState<CommunityPost | null | undefined>(undefined);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -36,13 +41,15 @@ export function CommunityScreen() {
 
   const loadRequestRef = useRef(0);
 
-  async function load(signal?: AbortSignal) {
+  const load = useCallback(async (signal?: AbortSignal) => {
     const requestId = ++loadRequestRef.current;
     setLoading(true);
     setError('');
     try {
       const params = new URLSearchParams();
       if (category) params.set('category', category);
+      if (region) params.set('region', region);
+      if (placeCategory) params.set('placeCategory', placeCategory);
       if (bookmarkedOnly) params.set('bookmarked', 'true');
       const response = await fetch(`/api/community?${params}`, { cache: 'no-store', signal });
       const payload = await response.json();
@@ -56,13 +63,18 @@ export function CommunityScreen() {
     } finally {
       if (requestId === loadRequestRef.current) setLoading(false);
     }
-  }
+  }, [category, region, placeCategory, bookmarkedOnly, ui.loadFailed]);
 
   useEffect(() => {
     const controller = new AbortController();
     void load(controller.signal);
     return () => controller.abort();
-  }, [category, bookmarkedOnly]);
+  }, [load]);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => setRegion(regionInput.trim()), 300);
+    return () => window.clearTimeout(timeout);
+  }, [regionInput]);
 
   const visiblePosts = useMemo(() => {
     const keyword = query.trim().toLocaleLowerCase(locale);
@@ -83,6 +95,7 @@ export function CommunityScreen() {
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload?.error?.message ?? ui.bookmarkFailed);
+      if (bookmarkedOnly && !next) setPosts(current => current.filter(item => item.id !== post.id));
     } catch (cause) {
       setPosts(current => current.map(item => item.id === post.id ? { ...item, bookmarked: !next } : item));
       setNotice(cause instanceof Error ? cause.message : ui.bookmarkFailed);
@@ -106,8 +119,9 @@ export function CommunityScreen() {
   function handleSaved(saved: CommunityPost) {
     setPosts(current => {
       const exists = current.some(post => post.id === saved.id);
-      const matchesFilters = (!category || saved.category === category) && (!bookmarkedOnly || saved.bookmarked);
-      if (exists) return current.map(post => post.id === saved.id ? saved : post);
+      const matchesFilters = (!category || saved.category === category) && (!bookmarkedOnly || saved.bookmarked) &&
+        (!placeCategory || saved.placeCategory === placeCategory) && (!region || saved.placeAddress?.toLocaleLowerCase().includes(region.toLocaleLowerCase()));
+      if (exists) return matchesFilters ? current.map(post => post.id === saved.id ? saved : post) : current.filter(post => post.id !== saved.id);
       return matchesFilters ? [saved, ...current] : current;
     });
     setEditorPost(undefined);
@@ -138,6 +152,17 @@ export function CommunityScreen() {
           ))}
           <button type="button" onClick={() => setBookmarkedOnly(current => !current)} aria-pressed={bookmarkedOnly} className={`inline-flex min-h-10 shrink-0 items-center gap-1 rounded-full px-4 text-[10px] font-black ${bookmarkedOnly ? 'bg-[#173e78] text-white' : 'bg-[#f1f0ee] text-[#28364d]'}`}><Bookmark size={13} fill={bookmarkedOnly ? 'currentColor' : 'none'} /> {ui.savedFilter}</button>
         </div>
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <label className="text-[10px] font-bold text-[#667080]">{copy.region}
+            <input value={regionInput} onChange={event => setRegionInput(event.target.value)} maxLength={60} placeholder={copy.regionHint} className="mt-1 min-h-11 w-full rounded-xl border border-[#e2ddd5] bg-white px-3 text-[11px]" />
+          </label>
+          <label className="text-[10px] font-bold text-[#667080]">{copy.placeCategory}
+            <select value={placeCategory} onChange={event => setPlaceCategory(event.target.value as PlaceCategory | '')} className="mt-1 min-h-11 w-full rounded-xl border border-[#e2ddd5] bg-white px-3 text-[11px]">
+              <option value="">{copy.allPlaces}</option>
+              {placeCategories.map(value => <option key={value} value={value}>{messages.categories[value]}</option>)}
+            </select>
+          </label>
+        </div>
       </header>
 
       {notice && <p className="mx-5 mt-4 rounded-2xl bg-[#fff0ed] p-4 text-[10px] font-bold text-[#8d5550]" role="status">{notice}</p>}
@@ -146,7 +171,7 @@ export function CommunityScreen() {
         {loading ? <CommunitySkeleton label={ui.loadingList} loadingLabel={ui.loading} /> : error ? (
           <ErrorState title={ui.loadErrorTitle} description={error} onRetry={() => void load()} />
         ) : !visiblePosts.length ? (
-          <EmptyState title={ui.emptyTitle} description={query ? ui.emptySearch : ui.emptyDefault} action={<button type="button" onClick={() => { setQuery(''); setCategory(''); setBookmarkedOnly(false); }} className="rounded-full bg-[#173e78] px-5 py-2.5 text-[10px] font-black text-white">{ui.resetFilters}</button>} />
+          <EmptyState title={ui.emptyTitle} description={query ? ui.emptySearch : ui.emptyDefault} action={<button type="button" onClick={() => { setQuery(''); setCategory(''); setBookmarkedOnly(false); setRegionInput(''); setRegion(''); setPlaceCategory(''); }} className="rounded-full bg-[#173e78] px-5 py-2.5 text-[10px] font-black text-white">{ui.resetFilters}</button>} />
         ) : visiblePosts.map(post => (
           <article key={post.id} className="overflow-hidden rounded-3xl bg-white shadow-[0_10px_35px_rgba(34,44,65,0.08)] ring-1 ring-black/5">
             <Link href={`/community/${post.id}`} className="block focus-visible:outline-offset-[-3px]">
@@ -154,6 +179,7 @@ export function CommunityScreen() {
               <div className="p-5 pb-3">
                 <div className="flex items-center gap-2 text-[9px] font-black"><span className="rounded-full bg-[#fff0ed] px-2.5 py-1 text-[#f45f62]">{categoryLabels[post.category]}</span>{post.contentId && <span className="inline-flex items-center gap-1 text-[#667080]"><MapPin size={11} /> {ui.placeLinked}</span>}</div>
                 <h2 className="mt-3 text-[17px] font-black leading-6 tracking-tight text-[#172f58]">{post.title}</h2>
+                {post.placeName && <p className="mt-1 text-[10px] text-[#667080]">{post.placeName} · {post.placeAddress}</p>}
                 <p className="mt-2 line-clamp-3 whitespace-pre-line text-[11px] font-medium leading-5 text-[#69717e]">{post.content}</p>
                 <div className="mt-4 flex items-end justify-between gap-3">
                   <div><p className="text-[10px] font-black text-[#273550]">{post.authorName}</p><p className="mt-0.5 text-[9px] font-semibold text-[#a09c96]">{new Date(post.createdAt).toLocaleDateString(locale)}</p></div>

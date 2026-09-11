@@ -1,5 +1,7 @@
 import { distanceMeters } from '@/backend/geo';
 import { generateStructured, isOpenAiAvailable } from '@/backend/openai';
+import { resolveDirections } from '@/backend/kakao-directions';
+import { courseLegKey, timeCourseStops, type CourseLeg } from '@/backend/course-timing';
 import type {
   CoursePlan,
   CourseRequest,
@@ -85,23 +87,6 @@ export function orderStopsByDistance(
   return ordered;
 }
 
-function totals(stops: CourseStop[]): { distance: number; minutes: number } {
-  let distance = 0;
-  let minutes = stops.reduce((sum, stop) => sum + stop.stayMinutes, 0);
-  for (let index = 1; index < stops.length; index += 1) {
-    const previous = stops[index - 1].place;
-    const current = stops[index].place;
-    if (!previous || !current) continue;
-    const leg = distanceMeters(
-      { lat: previous.coordinates[0], lng: previous.coordinates[1] },
-      { lat: current.coordinates[0], lng: current.coordinates[1] }
-    );
-    distance += leg;
-    minutes += Math.round(leg / 250);
-  }
-  return { distance: Math.round(distance), minutes };
-}
-
 function planFromStops(
   title: string,
   summary: string,
@@ -111,14 +96,11 @@ function planFromStops(
   generatedBy: CoursePlan['generatedBy']
 ): CoursePlan {
   const stops = orderStopsByDistance(rawStops, candidates);
-  const total = totals(stops);
   return {
     title,
     summary,
-    stops,
     transport: request.transport,
-    totalDistanceMeters: total.distance,
-    estimatedMinutes: total.minutes,
+    ...timeCourseStops(stops, request),
     generatedBy
   };
 }
@@ -127,6 +109,12 @@ export function deterministicCoursePlan(
   request: CourseRequest,
   candidates: PlaceSummary[]
 ): CoursePlan {
+  const copy = {
+    ko: { title: '나에게 맞춘 경주 여행', suffix: '경주 여행', match: '선택한 관심사와 잘 맞는 장소입니다.', other: '이동 동선과 여행 밀도를 고려해 포함했습니다.', summary: `${request.days}일간의 관심사 맞춤 여행 코스입니다.` },
+    en: { title: 'Your Gyeongju itinerary', suffix: 'in Gyeongju', match: 'Selected to match your interests.', other: 'Selected for the route and your travel pace.', summary: `A ${request.days}-day course tailored to your interests.` },
+    ja: { title: 'あなたに合った慶州旅行', suffix: '慶州旅行', match: '選択した興味に合った場所です。', other: '移動経路と旅行ペースを考慮しました。', summary: `興味に合わせた${request.days}日間の旅行コースです。` },
+    zh: { title: '为您定制的庆州之旅', suffix: '庆州之旅', match: '根据您的兴趣选择的地点。', other: '综合考虑路线和旅行节奏。', summary: `根据您的兴趣安排的${request.days}天旅行路线。` }
+  }[request.lang];
   const selected = [...candidates]
     .sort((a, b) => interestScore(b, request) - interestScore(a, request))
     .slice(0, desiredStopCount(request, candidates));
@@ -134,15 +122,15 @@ export function deterministicCoursePlan(
     contentId: place.contentId,
     order: index,
     reason: request.interests.includes(place.category)
-      ? '선택한 관심사와 잘 맞는 장소입니다.'
-      : '이동 동선과 여행 밀도를 고려해 포함했습니다.',
+      ? copy.match
+      : copy.other,
     stayMinutes: request.pace === 'relaxed' ? 90 : request.pace === 'packed' ? 45 : 60,
     place
   }));
 
   return planFromStops(
-    request.purpose ? `${request.purpose} 경주 여행` : '나에게 맞춘 경주 여행',
-    `${request.days}일 일정과 ${request.transport} 이동을 고려한 추천 코스입니다.`,
+    request.purpose ? `${request.purpose} ${copy.suffix}`.slice(0, 80) : copy.title,
+    copy.summary,
     stops,
     candidates,
     request,
@@ -155,12 +143,14 @@ export function validateAiCourse(
   request: CourseRequest,
   candidates: PlaceSummary[]
 ): CoursePlan | null {
+  if (!value || typeof value !== 'object' || !Array.isArray(value.stops)) return null;
   const allowed = new Map(candidates.map(place => [place.contentId, place]));
   const seen = new Set<string>();
   const maxStops = desiredStopCount(request, candidates);
   const stops: CourseStop[] = [];
 
   for (const stop of value.stops ?? []) {
+    if (!stop || typeof stop.contentId !== 'string' || typeof stop.reason !== 'string') continue;
     if (!allowed.has(stop.contentId) || seen.has(stop.contentId)) continue;
     if (!Number.isInteger(stop.stayMinutes) || stop.stayMinutes < 15 || stop.stayMinutes > 240) continue;
     seen.add(stop.contentId);
@@ -174,7 +164,7 @@ export function validateAiCourse(
     if (stops.length >= maxStops) break;
   }
 
-  if (!value.title?.trim() || !value.summary?.trim() || !stops.length) return null;
+  if (typeof value.title !== 'string' || !value.title.trim() || typeof value.summary !== 'string' || !value.summary.trim() || !stops.length) return null;
   return planFromStops(
     value.title.slice(0, 80),
     value.summary.slice(0, 300),
@@ -190,7 +180,7 @@ export async function createCoursePlan(
   candidates: PlaceSummary[],
   actorKey: string
 ): Promise<CoursePlan> {
-  if (!isOpenAiAvailable()) return deterministicCoursePlan(request, candidates);
+  if (!isOpenAiAvailable()) return withMapTiming(deterministicCoursePlan(request, candidates), request);
   try {
     const result = await generateStructured<AiCourse>({
       name: 'tour_course',
@@ -207,7 +197,7 @@ export async function createCoursePlan(
     });
     const validated = validateAiCourse(result.value, request, candidates);
     if (!validated) throw new Error('OpenAI course failed server validation.');
-    return validated;
+    return withMapTiming(validated, request);
   } catch {
     console.info(JSON.stringify({
       event: 'openai_fallback',
@@ -215,6 +205,28 @@ export async function createCoursePlan(
       candidateCount: candidates.length,
       lang: request.lang
     }));
-    return deterministicCoursePlan(request, candidates);
+    return withMapTiming(deterministicCoursePlan(request, candidates), request);
   }
+}
+
+async function withMapTiming(plan: CoursePlan, request: CourseRequest): Promise<CoursePlan> {
+  if (!process.env.KAKAO_REST_API_KEY?.trim()) return plan;
+  const legs = new Map<string, CourseLeg>();
+  await Promise.all(plan.stops.slice(1).map(async (stop, index) => {
+    const previous = plan.stops[index];
+    if (!previous.place || !stop.place) return;
+    const a = previous.place.coordinates;
+    const b = stop.place.coordinates;
+    const endpoints = {
+      origin: { lat: a[0], lng: a[1] }, destination: { lat: b[0], lng: b[1] },
+      originName: previous.place.name, destinationName: stop.place.name
+    };
+    const resolved = await resolveDirections(request.transport, endpoints, Math.round(distanceMeters(endpoints.origin, endpoints.destination)));
+    if (resolved.fallback) return;
+    legs.set(courseLegKey(previous.contentId, stop.contentId), {
+      distanceMeters: resolved.result.distanceMeters,
+      travelMinutes: Math.ceil(resolved.result.durationSeconds / 60), fromProvider: true, path: resolved.result.path
+    });
+  }));
+  return { ...plan, ...timeCourseStops(plan.stops, request, legs) };
 }

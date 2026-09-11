@@ -17,6 +17,8 @@ function queryChain(result: Result) {
   const self = () => chain;
   chain.select = vi.fn(self);
   chain.eq = vi.fn(self);
+  chain.ilike = vi.fn(self);
+  chain.maybeSingle = vi.fn().mockResolvedValue(result);
   chain.order = vi.fn(self);
   chain.limit = vi.fn(self);
   chain.single = vi.fn().mockResolvedValue(result);
@@ -66,7 +68,7 @@ describe('community collection route', () => {
 
       expect(response.status).toBe(200);
       const select = posts.select.mock.calls[0][0] as string;
-      expect(select).toContain('places!inner(content_id)');
+      expect(select).toContain('places!inner(content_id, name, address, category)');
       expect(select).toContain('community_bookmarks!inner(actor_key)');
       expect(posts.eq).toHaveBeenCalledWith('places.content_id', '126508');
       expect(posts.eq).toHaveBeenCalledWith('community_bookmarks.actor_key', actor.actorKey);
@@ -81,8 +83,21 @@ describe('community collection route', () => {
       await GET(new NextRequest('http://localhost/api/community'));
 
       const select = posts.select.mock.calls[0][0] as string;
-      expect(select).toContain('places(content_id)');
+      expect(select).toContain('places(content_id, name, address, category)');
       expect(select).not.toContain('!inner');
+    });
+
+    it('combines tip, area, and linked place category filters before limiting results', async () => {
+      getCurrentUser.mockResolvedValue(null);
+      const posts = queryChain({ data: [], error: null });
+      createSupabaseAdminClient.mockReturnValue({ from: vi.fn(() => posts) });
+      const { GET } = await import('@/app/api/community/route');
+      const response = await GET(new NextRequest('http://localhost/api/community?category=tip&region=황남동&placeCategory=food'));
+      expect(response.status).toBe(200);
+      expect(posts.select).toHaveBeenCalledWith(expect.stringContaining('places!inner('));
+      expect(posts.eq).toHaveBeenCalledWith('category', 'tip');
+      expect(posts.eq).toHaveBeenCalledWith('places.category', 'food');
+      expect(posts.ilike).toHaveBeenCalledWith('places.address', '%황남동%');
     });
 
     it('answers 503 with a stable message when the database cannot be reached', async () => {
@@ -107,6 +122,30 @@ describe('community collection route', () => {
   });
 
   describe('POST', () => {
+    it.each(['food', 'lodging'])('requires linked place and rating for %s reviews', async category => {
+      const rpc = vi.fn();
+      createSupabaseAdminClient.mockReturnValue({ from: vi.fn(), rpc });
+      const { POST } = await import('@/app/api/community/route');
+      for (const payload of [{ rating: 4 }, { contentId: '123' }]) {
+        const response = await POST(postRequest({ category, title: '방문 후기', content: '좋았어요.', ...payload }));
+        expect(response.status).toBe(400);
+        await expect(response.json()).resolves.toMatchObject({ error: { code: 'REVIEW_PLACE_REQUIRED' } });
+      }
+      expect(rpc).not.toHaveBeenCalled();
+    });
+
+    it('rejects a food rating linked to an accommodation', async () => {
+      const place = queryChain({ data: { id: 'place-1', category: 'lodging' }, error: null });
+      const rpc = vi.fn().mockResolvedValue({ data: true, error: null });
+      createSupabaseAdminClient.mockReturnValue({ from: vi.fn(() => place), rpc });
+      moderateContent.mockResolvedValue({ allowed: true, categories: {} });
+      const { POST } = await import('@/app/api/community/route');
+      const response = await POST(postRequest({ category: 'food', title: '평가', content: '후기', contentId: '123', rating: 4 }));
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({ error: { code: 'INVALID_REVIEW_PLACE' } });
+      expect(rpc).not.toHaveBeenCalledWith('create_community_post', expect.anything());
+    });
+
     it('rejects a post before any database write when server moderation rejects it', async () => {
       const from = vi.fn();
       const rpc = vi.fn().mockResolvedValue({ data: true, error: null });

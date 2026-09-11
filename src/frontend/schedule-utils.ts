@@ -15,10 +15,11 @@ export function moveScheduleItem<T>(items: T[], from: number, to: number): T[] {
   return next;
 }
 
-export function dateRange(startDate: string, endDate: string, maxDays = 31): string[] {
+export function dateRange(startDate: string, endDate: string, maxDays = 366): string[] {
   const start = new Date(`${startDate}T00:00:00Z`);
   const end = new Date(`${endDate}T00:00:00Z`);
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) return [];
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start ||
+    start.toISOString().slice(0, 10) !== startDate || end.toISOString().slice(0, 10) !== endDate) return [];
 
   const days: string[] = [];
   for (
@@ -29,6 +30,12 @@ export function dateRange(startDate: string, endDate: string, maxDays = 31): str
     days.push(cursor.toISOString().slice(0, 10));
   }
   return days;
+}
+
+export function addDateDays(date: string, days: number): string {
+  const value = new Date(`${date}T00:00:00Z`);
+  value.setUTCDate(value.getUTCDate() + days);
+  return value.toISOString().slice(0, 10);
 }
 
 /** YYYY-MM-DD in the device's local time zone (toISOString would give UTC). */

@@ -31,9 +31,9 @@ export async function POST(request: NextRequest) {
 
   const body = await parseBody<CartBody>(request);
   const placeInput = body?.contentId ?? body?.placeId;
-  if (!placeInput) return apiError('INVALID_PLACE', 'contentId가 필요합니다.');
+  if (typeof placeInput !== 'string' || !placeInput.trim() || placeInput.length > 100) return apiError('INVALID_PLACE', 'contentId가 필요합니다.');
 
-  const placeId = await resolvePlaceId(context.db, placeInput);
+  const placeId = await resolvePlaceId(context.db, placeInput.trim());
   if (!placeId) return apiError('PLACE_NOT_FOUND', '관광지를 찾을 수 없습니다.', 404);
 
   const { data, error } = await context.db

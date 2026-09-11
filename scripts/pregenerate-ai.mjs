@@ -2,7 +2,8 @@ import { createHash } from 'node:crypto';
 import OpenAI from 'openai';
 import { createClient } from '@supabase/supabase-js';
 
-const required = ['NEXT_PUBLIC_SUPABASE_URL', 'SUPABASE_SECRET_KEY', 'OPENAI_API_KEY'];
+const dryRun = process.argv.includes('--dry-run');
+const required = ['NEXT_PUBLIC_SUPABASE_URL', 'SUPABASE_SECRET_KEY', ...(dryRun ? [] : ['OPENAI_API_KEY'])];
 for (const name of required) {
   if (!process.env[name]?.trim()) throw new Error(`${name} is required.`);
 }
@@ -17,11 +18,6 @@ const languageNames = {
   ja: 'Japanese',
   zh: 'Simplified Chinese'
 };
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-  timeout: 30_000,
-  maxRetries: 1
-});
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SECRET_KEY,
@@ -48,7 +44,7 @@ const schema = {
 };
 
 const PLACE_LIMIT = 50;
-const placeColumns = 'id, content_id, name, overview, description, image_url';
+const placeColumns = 'id, content_id, name, overview, description, image_url, place_translations(lang, name, overview, description)';
 
 // Stamp targets are the places users are guaranteed to open, so their
 // narrations must exist before the generic catalogue is filled in.
@@ -57,6 +53,7 @@ const seenPlaceIds = new Set();
 function addPlaces(rows) {
   for (const row of rows ?? []) {
     if (!row?.id || !row.content_id || seenPlaceIds.has(row.id) || places.length >= PLACE_LIMIT) continue;
+    if (!String(row.overview || row.description || '').trim()) continue;
     seenPlaceIds.add(row.id);
     places.push(row);
   }
@@ -88,25 +85,40 @@ if (configuredStampContentIds.length) {
   );
 }
 
-if (places.length < PLACE_LIMIT) {
+let catalogueOffset = 0;
+while (places.length < PLACE_LIMIT) {
   const { data: catalogue, error: placesError } = await supabase
     .from('places')
     .select(placeColumns)
     .not('content_id', 'is', null)
     .order('created_at', { ascending: true })
-    .limit(PLACE_LIMIT + places.length);
+    .order('id', { ascending: true })
+    .range(catalogueOffset, catalogueOffset + 199);
   if (placesError) throw placesError;
   addPlaces(catalogue);
+  if (!catalogue || catalogue.length < 200) break;
+  catalogueOffset += 200;
 }
+
+process.stdout.write(`Preflight: ${places.length}/${PLACE_LIMIT} grounded places, ${places.length * languages.length} multilingual narrations.\n`);
+if (places.length < PLACE_LIMIT) {
+  throw new Error(`At least ${PLACE_LIMIT} places with source overviews are required. Sync TourAPI descriptions before pregeneration.`);
+}
+if (dryRun) {
+  process.stdout.write('Dry run complete. No AI requests, uploads, or database writes were performed.\n');
+  process.exit(0);
+}
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, timeout: 30_000, maxRetries: 1 });
 
 let generated = 0;
 let skipped = 0;
 for (const place of places) {
-  const overview = String(place.overview || place.description || '').trim();
-  if (!overview) continue;
-  const sourceHash = createHash('sha256').update(overview).digest('hex');
-
   for (const lang of languages) {
+    // Match runtime grounding exactly so the 200 prepared narrations are cache hits.
+    const translation = (place.place_translations ?? []).find(item => item.lang === lang);
+    const overview = String(translation?.overview || translation?.description || place.overview || place.description || '').trim();
+    if (!overview) continue;
+    const sourceHash = createHash('sha256').update(overview).digest('hex');
     const { data: cached, error: cachedError } = await supabase
       .from('ai_narrations')
       .select('id, title, summary, narration, tags, audio_path')
@@ -129,7 +141,7 @@ for (const place of places) {
         input: JSON.stringify({
           contentId: String(place.content_id),
           lang,
-          placeName: String(place.name),
+          placeName: String(translation?.name || place.name),
           tourismOrganizationOverview: overview
         }),
         text: {
@@ -142,7 +154,12 @@ for (const place of places) {
         }
       });
       content = JSON.parse(response.output_text);
-      if (content.contentId !== String(place.content_id) || content.lang !== lang) {
+      if (content.contentId !== String(place.content_id) || content.lang !== lang ||
+          typeof content.title !== 'string' || !content.title.trim() || content.title.length > 80 ||
+          typeof content.summary !== 'string' || !content.summary.trim() || content.summary.length > 240 ||
+          typeof content.narration !== 'string' || !content.narration.trim() || content.narration.length > 1800 ||
+          !Array.isArray(content.tags) || content.tags.length < 1 || content.tags.length > 6 ||
+          content.tags.some(tag => typeof tag !== 'string' || !tag.trim() || tag.length > 30)) {
         throw new Error(`Server validation failed for ${place.content_id}:${lang}`);
       }
 
@@ -174,7 +191,7 @@ for (const place of places) {
     if (!audioPath) {
       const speech = await openai.audio.speech.create({
         model: ttsModel,
-        voice: 'alloy',
+        voice: process.env[`OPENAI_TTS_VOICE_${lang.toUpperCase()}`]?.trim() || 'alloy',
         input: String(content.narration).slice(0, 4096),
         response_format: 'mp3'
       });

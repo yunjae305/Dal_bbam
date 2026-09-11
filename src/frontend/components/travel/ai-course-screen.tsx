@@ -13,6 +13,9 @@ import type {
 import { PhoneStatus, HeaderBar } from '@/frontend/components/common/ui';
 import { useLocale } from '@/frontend/i18n/locale-context';
 import { uiMessages } from '@/shared/ui-messages';
+import { plannerMessages } from '@/shared/planner-messages';
+import { addDateDays, todayLocalDate } from '@/frontend/schedule-utils';
+import { CourseRouteMap } from '@/frontend/components/travel/course-route-map';
 
 type Props = { places: Place[] };
 
@@ -24,6 +27,7 @@ type CuratedCourse = {
   is_curated: boolean;
   is_ai_generated?: boolean;
   share_token?: string | null;
+  metadata?: { theme?: PlaceCategory };
   course_places: Array<{
     order_index: number;
     reason: string | null;
@@ -36,15 +40,17 @@ type CuratedCourse = {
   }> | null;
 };
 
-const categories: PlaceCategory[] = ['heritage', 'attraction', 'food', 'nature', 'experience', 'festival'];
+const categories: PlaceCategory[] = ['heritage', 'attraction', 'food', 'lodging', 'nature', 'experience', 'festival'];
 
 export function AiCourseScreen({ places }: Props) {
   const { locale, messages } = useLocale();
   const searchParams = useSearchParams();
   const ui = uiMessages[locale].course;
+  const planner = plannerMessages[locale];
   const requestedInterest = searchParams.get('interest');
   const [request, setRequest] = useState<CourseRequest>({
     purpose: '',
+    startTime: '09:00',
     days: 1,
     companion: 'solo',
     interests: [categories.includes(requestedInterest as PlaceCategory) ? requestedInterest as PlaceCategory : 'heritage'],
@@ -61,6 +67,10 @@ export function AiCourseScreen({ places }: Props) {
   const [notice, setNotice] = useState('');
   const [curated, setCurated] = useState<CuratedCourse[]>([]);
   const [myCourses, setMyCourses] = useState<CuratedCourse[]>([]);
+  const [startDate, setStartDate] = useState(todayLocalDate);
+  const [scheduleId, setScheduleId] = useState('');
+  const [theme, setTheme] = useState<PlaceCategory | 'all'>('all');
+  const [showMap, setShowMap] = useState(false);
 
   const byId = useMemo(() => new Map(places.map(place => [place.contentId, place])), [places]);
 
@@ -98,6 +108,8 @@ export function AiCourseScreen({ places }: Props) {
     setNotice('');
     setSaved(false);
     setShareToken('');
+    setScheduleId('');
+    setShowMap(false);
     try {
       const response = await fetch('/api/courses/recommend', {
         method: 'POST',
@@ -112,6 +124,30 @@ export function AiCourseScreen({ places }: Props) {
     } finally {
       setLoading(false);
     }
+  }
+
+  async function createItinerary() {
+    if (!plan || !startDate) return;
+    setSaving(true);
+    setError('');
+    try {
+      const response = await fetch('/api/schedules', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: plan.title, startDate, endDate: addDateDays(startDate, (plan.days ?? 1) - 1),
+          items: plan.stops.map(stop => ({
+            contentId: stop.contentId, visitDate: addDateDays(startDate, stop.dayIndex ?? 0),
+            startTime: stop.startTime, stayMinutes: stop.stayMinutes, note: stop.reason
+          }))
+        })
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload?.error?.message ?? planner.scheduleFailed);
+      setScheduleId(payload.data.id);
+      setNotice(planner.scheduleCreated);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : planner.scheduleFailed);
+    } finally { setSaving(false); }
   }
 
   async function savePlan() {
@@ -186,6 +222,9 @@ export function AiCourseScreen({ places }: Props) {
             />
           </label>
           <div className="grid grid-cols-2 gap-3">
+            <Field label={planner.startTime}>
+              <input type="time" min="06:00" max="18:59" value={request.startTime} onChange={event => setRequest(current => ({ ...current, startTime: event.target.value }))} className="h-11 w-full rounded-xl bg-[#f4f5f6] px-3 text-[11px]" />
+            </Field>
             <Field label={ui.duration}>
               <select value={request.days} onChange={event => setRequest(current => ({ ...current, days: Number(event.target.value) }))} className="h-10 w-full rounded-xl bg-[#f4f5f6] px-3 text-[11px]">
                 {[1, 2, 3, 4, 5, 6, 7].map(day => <option key={day} value={day}>{ui.days.replace('{day}', String(day))}</option>)}
@@ -221,7 +260,7 @@ export function AiCourseScreen({ places }: Props) {
               {categories.map(category => {
                 const active = request.interests.includes(category);
                 return (
-                  <button key={category} type="button" onClick={() => toggleInterest(category)} className={`rounded-full px-3 py-2 text-[10px] font-black ${active ? 'bg-[#ff5b4f] text-white' : 'bg-[#f1f2f4] text-[#727b87]'}`}>
+                  <button key={category} type="button" aria-pressed={active} onClick={() => toggleInterest(category)} className={`min-h-11 rounded-full px-3 py-2 text-[10px] font-black ${active ? 'bg-[#ff5b4f] text-white' : 'bg-[#f1f2f4] text-[#727b87]'}`}>
                     {messages.categories[category]}
                   </button>
                 );
@@ -248,11 +287,14 @@ export function AiCourseScreen({ places }: Props) {
               <div className="flex shrink-0 gap-2">
                 {shareToken && <button type="button" onClick={sharePlan} className="grid h-9 w-9 place-items-center rounded-full bg-[#eef3ee] text-[#2f7567]" aria-label={ui.shareLabel}><Share2 size={16} /></button>}
                 <button type="button" onClick={savePlan} disabled={saving || saved} className="grid h-9 w-9 place-items-center rounded-full bg-[#fff1ee] text-[#ff5b4f] disabled:opacity-60" aria-label={ui.saveLabel}>
-                  {saved ? <Check size={17} /> : <Bookmark size={17} />}
+                  {saving ? <LoaderCircle size={16} aria-hidden="true" className="animate-spin" /> : saved ? <Check size={17} /> : <Bookmark size={17} />}
                 </button>
               </div>
             </div>
             <p className="mt-3 text-[10px] font-bold text-[#69727e]">{ui.durationSummary.replace('{distance}', (plan.totalDistanceMeters / 1000).toFixed(1)).replace('{hours}', String(Math.round(plan.estimatedMinutes / 60)))}</p>
+            <p className="mt-2 text-[10px] leading-5 text-[#69727e]">{plan.timingSource === 'map-provider' ? planner.provider : planner.estimate}</p>
+            <button type="button" onClick={() => setShowMap(value => !value)} aria-expanded={showMap} className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-xl bg-[#eef0f3] px-3 text-[11px] font-bold"><MapIcon size={15} />{planner.map}</button>
+            {showMap && <CourseRouteMap plan={plan} />}
             <ol className="mt-4 space-y-3">
               {plan.stops.map((stop, index) => {
                 const place = stop.place ? {
@@ -265,12 +307,18 @@ export function AiCourseScreen({ places }: Props) {
                     <img src={place?.image || '/login-spring-bg.png'} alt={place?.name || ui.recommendedPlace} className="h-12 w-14 rounded-lg object-cover" />
                     <div className="min-w-0">
                       <h3 className="truncate text-[12px] font-black">{place?.name || stop.contentId}</h3>
+                      <p className="mt-1 text-[10px] font-bold tabular-nums text-[#223c72]">{planner.day.replace('{day}', String((stop.dayIndex ?? 0) + 1))} · {stop.startTime}–{stop.endTime}{Boolean(stop.travelMinutes) && ` · ${planner.transfer.replace('{minutes}', String(stop.travelMinutes))}`}</p>
                       <p className="mt-1 line-clamp-2 text-[9px] leading-4 text-[#7e8793]">{stop.reason} · {ui.minutes.replace('{minutes}', String(stop.stayMinutes))}</p>
                     </div>
                   </li>
                 );
               })}
             </ol>
+            <div className="mt-5 grid gap-3 border-t border-black/5 pt-4">
+              <Field label={planner.startDate}><input type="date" value={startDate} onChange={event => { setStartDate(event.target.value); setScheduleId(''); }} className="h-11 w-full rounded-xl bg-[#f4f5f6] px-3 text-xs" /></Field>
+              {scheduleId ? <Link href={`/schedule?id=${encodeURIComponent(scheduleId)}`} className="grid min-h-11 place-items-center rounded-xl bg-[#2f7567] px-3 text-xs font-bold text-white">{planner.openSchedule}</Link> :
+                <button type="button" onClick={createItinerary} disabled={saving || !startDate || !plan.stops.length} className="min-h-11 rounded-xl bg-[#223c72] px-3 text-xs font-bold text-white disabled:opacity-50">{saving ? <LoaderCircle size={16} className="mx-auto animate-spin" /> : planner.addSchedule}</button>}
+            </div>
           </article>
         )}
 
@@ -310,8 +358,9 @@ export function AiCourseScreen({ places }: Props) {
           <div className="mt-7">
             <h2 className="text-[16px] font-black tracking-[-0.02em]">{ui.curatedTitle}</h2>
             <p className="mt-1 text-[10px] font-bold text-[#8d95a1]">{ui.curatedDescription}</p>
+            <label className="mt-3 block text-[10px] font-bold">{planner.theme}<select value={theme} onChange={event => setTheme(event.target.value as PlaceCategory | 'all')} className="ml-2 min-h-11 rounded-xl bg-white px-3"><option value="all">{planner.themeAll}</option>{categories.map(category => <option key={category} value={category}>{messages.categories[category]}</option>)}</select></label>
             <div className="mt-3 space-y-4">
-              {curated.map(course => {
+              {curated.filter(course => theme === 'all' || course.metadata?.theme === theme).map(course => {
                 const stops = [...(course.course_places ?? [])].sort((a, b) => a.order_index - b.order_index);
                 return (
                   <article key={course.id} className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-black/5">
@@ -325,6 +374,7 @@ export function AiCourseScreen({ places }: Props) {
                           <p className="mt-1 text-[10px] leading-4 text-[#727b87]">{course.description}</p>
                         )}
                       </div>
+                      {course.share_token && <button type="button" onClick={() => void shareCourse(course.share_token ?? '', course.title, course.description)} aria-label={ui.shareLabel} className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-[#eef3ee] text-[#2f7567]"><Share2 size={16} /></button>}
                     </div>
                     <ol className="mt-3 space-y-2">
                       {stops.map((stop, index) => (

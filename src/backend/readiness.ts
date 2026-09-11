@@ -1,11 +1,16 @@
-import { createSupabaseAdminClient } from '@/backend/supabase/admin';
 import { getSupabaseEnv } from '@/backend/supabase/env';
 import { fetchWithTimeout } from '@/backend/fetch-timeout';
 import { getGyeongjuTourPlaces, TourApiError } from '@/backend/tour-api';
+import { inspectDatabaseReadiness } from '@/backend/database-readiness';
+import { isFeatureEnabled } from '@/backend/features';
 
 export type ProviderReadiness = {
   configured: boolean;
   operational: boolean;
+  reachable?: boolean;
+  schemaReady?: boolean;
+  storageReady?: boolean;
+  contentReady?: boolean;
   latencyMs?: number;
   reason?: 'not_configured' | 'unreachable' | 'unauthorized' | 'misconfigured';
 };
@@ -20,6 +25,8 @@ export type ReadinessSnapshot = {
 
 const CACHE_TTL_MS = 30_000;
 let cached: { expiresAt: number; value: ReadinessSnapshot } | null = null;
+let databaseCached: { expiresAt: number; key: string; value: ProviderReadiness } | null = null;
+let databasePending: { key: string; task: Promise<ProviderReadiness> } | null = null;
 
 function result(
   configured: boolean,
@@ -38,19 +45,28 @@ function result(
 export async function checkDatabase(): Promise<ProviderReadiness> {
   const startedAt = Date.now();
   const env = getSupabaseEnv();
-  if (!env.configured) return result(false, startedAt, false, 'not_configured');
-
-  const db = createSupabaseAdminClient();
-  if (!db) return result(true, startedAt, false, 'misconfigured');
-
+  const unavailable = { reachable: false, schemaReady: false, storageReady: false, contentReady: false };
+  if (!env.configured || !env.url || !env.secretKey) return { ...result(false, startedAt, false, 'not_configured'), ...unavailable };
+  const aiEnabled = isFeatureEnabled('ai');
+  const communityEnabled = isFeatureEnabled('community');
+  const key = `${env.url}:${env.secretKey}:${aiEnabled}:${communityEnabled}`;
+  if (databaseCached?.key === key && databaseCached.expiresAt > Date.now()) return databaseCached.value;
+  if (databasePending?.key === key) return databasePending.task;
+  const task = (async (): Promise<ProviderReadiness> => {
+    try {
+      const checked = await inspectDatabaseReadiness({ url: env.url!, secret: env.secretKey!, aiEnabled, communityEnabled });
+      return {
+        ...result(true, startedAt, checked.ready, checked.ready ? undefined : checked.reachable ? 'misconfigured' : 'unreachable'),
+        reachable: checked.reachable, schemaReady: checked.schemaReady, storageReady: checked.storageReady, contentReady: checked.contentReady
+      };
+    } catch { return { ...result(true, startedAt, false, 'unreachable'), ...unavailable }; }
+  })();
+  databasePending = { key, task };
   try {
-    const { error } = await db.from('places').select('id').limit(1);
-    return error
-      ? result(true, startedAt, false, 'unreachable')
-      : result(true, startedAt, true);
-  } catch {
-    return result(true, startedAt, false, 'unreachable');
-  }
+    const value = await task;
+    databaseCached = { key, value, expiresAt: Date.now() + CACHE_TTL_MS };
+    return value;
+  } finally { if (databasePending?.task === task) databasePending = null; }
 }
 
 async function checkTourApi(): Promise<ProviderReadiness> {
@@ -140,4 +156,3 @@ export async function getReadinessSnapshot(options?: { force?: boolean }): Promi
   cached = { expiresAt: Date.now() + CACHE_TTL_MS, value };
   return value;
 }
-

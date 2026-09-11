@@ -1,0 +1,16 @@
+# Local credentials, test output and test signing artifacts must not be uploaded.
+.env
+.env.local
+.env.*.local
+.playwright-browsers/
+test-results/
+coverage/
+playwright-report/
+browser-tour/
+.lighthouseci/
+android/twa/
+android/dist/
+android/*.keystore
+artifacts/
+*.log
+*.docx

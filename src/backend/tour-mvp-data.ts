@@ -7,19 +7,75 @@ import {
   type TourPlaceSummary
 } from '@/backend/tour-api';
 import type { Lang, MvpData, Place } from '@/shared/types';
+import { tourCategory } from '@/shared/tour-category';
 
 const FALLBACK_IMAGE = '/login-spring-bg.png';
 const GYEONGJU_CENTER: [number, number] = [35.8562, 129.2247];
 
-const CONTENT_TYPE_CATEGORY: Record<string, Place['category']> = {
-  '12': 'attraction',
-  '14': 'heritage',
-  '15': 'festival',
-  '28': 'experience',
-  '32': 'lodging',
-  '38': 'attraction',
-  '39': 'food'
+// These caches contain only the shared public catalogue. Authentication,
+// schedules, reactions and recommendations are never read in this module.
+export const PUBLIC_CATALOGUE_BUDGET_MS = 1500;
+export const PUBLIC_CATALOGUE_FRESH_MS = 30_000;
+const SAMPLE_RETRY_MS = 5_000;
+const MAX_STALE_MS = 24 * 60 * 60 * 1000;
+const REFRESH_TIMEOUT_MS = 35_000;
+type CatalogueEntry = { data: MvpData; fetchedAt: number; freshUntil: number; stale: boolean };
+export type PublicCatalogue = MvpData & {
+  catalogue: { source: 'database' | 'tour-api' | 'sample'; fallback: boolean; stale: boolean; fetchedAt: string };
 };
+const publicCatalogue = new Map<Lang, CatalogueEntry>();
+const pendingCatalogue = new Map<Lang, Promise<CatalogueEntry>>();
+
+function catalogueSource(data: MvpData): PublicCatalogue['catalogue']['source'] {
+  const source = data.places[0]?.source;
+  return source === 'database' || source === 'tour-api' ? source : 'sample';
+}
+
+function snapshot(entry: CatalogueEntry, stale = entry.stale): PublicCatalogue {
+  const source = catalogueSource(entry.data);
+  // Callers can filter/reorder their response without mutating the cached
+  // catalogue later served to a different visitor.
+  const data = structuredClone(entry.data);
+  if (source === 'sample') data.places = data.places.map(place => ({ ...place, source: 'sample' }));
+  return { ...data, catalogue: {
+    source, fallback: source === 'sample', stale, fetchedAt: new Date(entry.fetchedAt).toISOString()
+  } };
+}
+
+async function withinBudget<T>(promise: Promise<T>, milliseconds: number): Promise<T | undefined> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<undefined>(resolve => { timer = setTimeout(() => resolve(undefined), milliseconds); })
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+function refreshCatalogue(lang: Lang): Promise<CatalogueEntry> {
+  const running = pendingCatalogue.get(lang);
+  if (running) return running;
+  const request = (async () => {
+    const data = await withinBudget(loadCatalogue(lang).catch(() => getMvpData(lang)), REFRESH_TIMEOUT_MS)
+      ?? getMvpData(lang);
+    const now = Date.now();
+    const previous = publicCatalogue.get(lang);
+    const fallback = catalogueSource(data) === 'sample';
+    // An outage must not replace a recent, useful live catalogue with samples.
+    const next = fallback && previous && catalogueSource(previous.data) !== 'sample' && now - previous.fetchedAt < MAX_STALE_MS
+      ? { ...previous, freshUntil: now + SAMPLE_RETRY_MS, stale: true }
+      : { data, fetchedAt: now, freshUntil: now + (fallback ? SAMPLE_RETRY_MS : PUBLIC_CATALOGUE_FRESH_MS), stale: false };
+    publicCatalogue.set(lang, next);
+    return next;
+  })();
+  pendingCatalogue.set(lang, request);
+  void request.finally(() => {
+    if (pendingCatalogue.get(lang) === request) pendingCatalogue.delete(lang);
+  });
+  return request;
+}
 
 const CONTENT_TYPE_TAG: Record<string, string> = {
   '12': '관광지',
@@ -73,7 +129,7 @@ export function mapTourPlaceSummary(
   const contentTypeId = getContentTypeId(item, fallbackContentTypeId);
   const title = field(item, 'title') || '경주 관광지';
   const address = [field(item, 'addr1'), field(item, 'addr2')].filter(Boolean).join(' ') || '경주시';
-  const category = CONTENT_TYPE_CATEGORY[contentTypeId] ?? 'attraction';
+  const category = tourCategory(contentTypeId, field(item, 'cat1'), field(item, 'cat2'));
   const tag = CONTENT_TYPE_TAG[contentTypeId] ?? category;
   const mapY = numberField(item, 'mapy');
   const mapX = numberField(item, 'mapx');
@@ -117,9 +173,9 @@ async function loadTourPlaces(contentTypeId: string, numOfRows: string) {
   return result.items.map(item => ({ item, contentTypeId }));
 }
 
-export async function getTourMvpData(lang: Lang = 'ko'): Promise<MvpData> {
+async function loadCatalogue(lang: Lang): Promise<MvpData> {
   const fallback = getMvpData(lang);
-  const supabasePlaces = await getSupabasePlaces(lang);
+  const supabasePlaces = await getSupabasePlaces(lang).catch(() => []);
 
   if (supabasePlaces.length) {
     return {
@@ -159,4 +215,23 @@ export async function getTourMvpData(lang: Lang = 'ko'): Promise<MvpData> {
   } catch {
     return fallback;
   }
+}
+
+export async function getTourMvpData(lang: Lang = 'ko'): Promise<PublicCatalogue> {
+  const now = Date.now();
+  const cached = publicCatalogue.get(lang);
+  if (cached && cached.freshUntil > now) return snapshot(cached);
+  const refresh = refreshCatalogue(lang);
+  if (cached && now - cached.fetchedAt < MAX_STALE_MS) {
+    // Stale data renders immediately while one shared refresh runs per locale.
+    return snapshot(cached, catalogueSource(cached.data) !== 'sample');
+  }
+  const fresh = await withinBudget(refresh, PUBLIC_CATALOGUE_BUDGET_MS);
+  if (fresh) return snapshot(fresh);
+  // Cold starts have an explicit response budget. The in-flight refresh can
+  // populate the cache when providers recover without holding up this render.
+  const fallback = { data: getMvpData(lang), fetchedAt: Date.now(), freshUntil: Date.now() + SAMPLE_RETRY_MS, stale: false };
+  const current = publicCatalogue.get(lang);
+  if (!current || Date.now() - current.fetchedAt >= MAX_STALE_MS) publicCatalogue.set(lang, fallback);
+  return snapshot(publicCatalogue.get(lang) ?? fallback);
 }

@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { CalendarDays, ChevronDown, ChevronUp, GripVertical, LoaderCircle, Pencil, Plus, Share2, Trash2, X } from 'lucide-react';
 import type { Place } from '@/shared/types';
 import { PhoneStatus, HeaderBar } from '@/frontend/components/common/ui';
@@ -8,6 +10,7 @@ import { EmptyState } from '@/frontend/components/common/feedback';
 import { dateRange, moveScheduleItem, todayLocalDate } from '@/frontend/schedule-utils';
 import { useLocale } from '@/frontend/i18n/locale-context';
 import { uiMessages } from '@/shared/ui-messages';
+import { plannerMessages } from '@/shared/planner-messages';
 
 type Props = { places: Place[] };
 type RawScheduleItem = {
@@ -35,8 +38,10 @@ type RawSchedule = {
 export function ItineraryScreen({ places }: Props) {
   const { locale } = useLocale();
   const ui = uiMessages[locale].itinerary;
+  const planner = plannerMessages[locale];
+  const searchParams = useSearchParams();
   const [schedules, setSchedules] = useState<RawSchedule[]>([]);
-  const [activeId, setActiveId] = useState('');
+  const [activeId, setActiveId] = useState(searchParams.get('id') ?? '');
   const [mode, setMode] = useState<'timeline' | 'calendar'>('timeline');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -119,7 +124,7 @@ export function ItineraryScreen({ places }: Props) {
           items: nextItems.map(item => ({
             contentId: item.places.content_id,
             visitDate: item.visit_date,
-            startTime: item.start_time || undefined,
+            startTime: item.start_time?.slice(0, 5) || undefined,
             stayMinutes: item.stay_minutes,
             note: item.note || undefined
           }))
@@ -156,7 +161,7 @@ export function ItineraryScreen({ places }: Props) {
   }
 
   function dropAt(targetIndex: number) {
-    if (dragIndex === null || dragIndex === targetIndex) return;
+    if (saving || dragIndex === null || dragIndex === targetIndex) return;
     const next = moveScheduleItem(sortedItems, dragIndex, targetIndex);
     setDragIndex(null);
     setSchedules(current => current.map(schedule =>
@@ -170,7 +175,7 @@ export function ItineraryScreen({ places }: Props) {
   // HTML5 drag events never fire on touch screens, so the grip handle also
   // supports pointer-based dragging for the PWA use case.
   function startTouchDrag(event: React.PointerEvent, index: number) {
-    if (event.pointerType === 'mouse') return;
+    if (saving || event.pointerType === 'mouse') return;
     event.preventDefault();
     (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
     setTouchDrag({ from: index, over: index });
@@ -199,6 +204,7 @@ export function ItineraryScreen({ places }: Props) {
   }
 
   function moveAt(index: number, targetIndex: number) {
+    if (saving) return;
     const next = moveScheduleItem(sortedItems, index, targetIndex);
     if (next === sortedItems) return;
     setSchedules(current => current.map(schedule =>
@@ -209,7 +215,8 @@ export function ItineraryScreen({ places }: Props) {
     void persistItems(next);
   }
 
-  function updateItem(index: number, patch: Partial<Pick<RawScheduleItem, 'visit_date' | 'start_time'>>) {
+  function updateItem(index: number, patch: Partial<Pick<RawScheduleItem, 'visit_date' | 'start_time' | 'stay_minutes' | 'note'>>) {
+    if (saving) return;
     const next = sortedItems.map((item, itemIndex) => itemIndex === index ? { ...item, ...patch } : item);
     setSchedules(current => current.map(schedule =>
       schedule.id === active?.id ? { ...schedule, schedule_places: next } : schedule
@@ -242,7 +249,7 @@ export function ItineraryScreen({ places }: Props) {
           items: adjustedItems.map(item => ({
             contentId: item.places.content_id,
             visitDate: item.visit_date,
-            startTime: item.start_time || undefined,
+            startTime: item.start_time?.slice(0, 5) || undefined,
             stayMinutes: item.stay_minutes,
             note: item.note || undefined
           }))
@@ -302,6 +309,7 @@ export function ItineraryScreen({ places }: Props) {
         right={active ? <button type="button" onClick={share} aria-label={ui.shareLabel}><Share2 size={18} /></button> : undefined}
       />
       <div className="px-5 pb-28">
+        <Link href="/courses" className="mt-3 block rounded-xl bg-[#eef0f3] p-3 text-center text-[11px] font-bold">{planner.addSchedule}</Link>
         {error && <p className="mt-3 rounded-xl bg-red-50 p-3 text-[11px] font-bold text-red-700" role="alert">{error}</p>}
         {notice && <p className="mt-3 rounded-xl bg-[#e8f2ed] p-3 text-[11px] font-bold text-[#2f7567]" role="status">{notice}</p>}
         {loading ? (
@@ -382,7 +390,7 @@ export function ItineraryScreen({ places }: Props) {
                 {sortedItems.map((item, index) => (
                   <li
                     key={`${item.places.content_id}-${index}`}
-                    draggable
+                    draggable={!saving}
                     onDragStart={() => setDragIndex(index)}
                     onDragOver={event => event.preventDefault()}
                     onDrop={() => dropAt(index)}
@@ -395,6 +403,7 @@ export function ItineraryScreen({ places }: Props) {
                     <div className="min-w-0">
                       <h3 className="truncate text-[12px] font-black">{item.places.name}</h3>
                       <p className="mt-1 text-[9px] text-[#8d95a1]">{ui.minutes.replace('{minutes}', String(item.stay_minutes))}</p>
+                      <label className="mt-2 block text-[9px] text-[#68716e]">{planner.stay}<select disabled={saving} aria-label={`${item.places.name} ${planner.stay}`} value={item.stay_minutes} onChange={event => updateItem(index, { stay_minutes: Number(event.target.value) })} className="ml-1 min-h-10 rounded bg-[#f4f5f6] text-[10px]">{Array.from(new Set([15, 30, 45, 60, 90, 120, 180, 240, item.stay_minutes])).sort((a, b) => a - b).map(value => <option key={value} value={value}>{value}</option>)}</select></label>
                       <div className="mt-1 flex gap-1">
                         <select value={item.visit_date} onChange={event => updateItem(index, { visit_date: event.target.value })} aria-label={ui.visitDate.replace('{name}', item.places.name)} className="min-w-0 max-w-[110px] rounded bg-[#f4f5f6] px-1 py-1 text-[8px]">
                           {tripDays.map(day => <option key={day} value={day}>{day}</option>)}
@@ -416,6 +425,7 @@ export function ItineraryScreen({ places }: Props) {
                       >
                         <GripVertical size={15} />
                       </button>
+                      <button type="button" disabled={saving} onClick={() => void persistItems(sortedItems.filter((_, itemIndex) => itemIndex !== index))} aria-label={planner.removePlace.replace('{name}', item.places.name)} className="col-span-2 grid min-h-11 place-items-center rounded-lg bg-red-50 text-red-700 disabled:opacity-40"><Trash2 size={15} /></button>
                     </div>
                   </li>
                 ))}
@@ -423,7 +433,7 @@ export function ItineraryScreen({ places }: Props) {
             )}
 
             <div className="mt-4 flex gap-2">
-              <select value={placeToAdd} onChange={event => setPlaceToAdd(event.target.value)} className="h-11 min-w-0 flex-1 rounded-xl bg-white px-3 text-[11px] font-bold ring-1 ring-black/5">
+              <select value={placeToAdd} aria-label={planner.pickPlace} onChange={event => setPlaceToAdd(event.target.value)} className="h-11 min-w-0 flex-1 rounded-xl bg-white px-3 text-[11px] font-bold ring-1 ring-black/5">
                 {places.map(place => <option key={place.contentId} value={place.contentId}>{place.name}</option>)}
               </select>
               <button type="button" onClick={addPlace} disabled={saving} className="flex h-11 items-center gap-1 rounded-xl bg-[#ff5b4f] px-4 text-[11px] font-black text-white disabled:opacity-50">

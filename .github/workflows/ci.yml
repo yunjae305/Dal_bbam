@@ -19,8 +19,15 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm run test:coverage
-      - run: npm run build
+      - run: npm install --prefix test-results/sql-runtime --no-save --ignore-scripts --no-audit --no-fund @electric-sql/pglite@0.5.8
+      - run: npm run test:sql
+      - run: npm run test:sql:migrations
+      - run: npm run test:db-tools
+      - run: npm run test:release-tools
+      - run: npm run build:test
+      - run: npx playwright install --with-deps chromium
       - run: npm run test:lighthouse
+      - run: npm run test:load
       - run: npm run audit:prod
 
   e2e:
@@ -33,11 +40,11 @@ jobs:
           node-version: 22.19
           cache: npm
       - run: npm ci
-      - run: npx playwright install --with-deps chromium
-      - run: npm run build
+      - run: npx playwright install --with-deps chromium firefox webkit
+      - run: npm run build:test
       - run: npm run test:e2e
         env:
-          PLAYWRIGHT_WEB_SERVER_COMMAND: npm run start -- --port 3200
+          PLAYWRIGHT_WEB_SERVER_COMMAND: node scripts/e2e-server.mjs
           JWT_SECRET: ci-only-secret-with-at-least-32-bytes
           DEMO_MODE_ENABLED: true
           DEMO_EMAIL: demo@gyeongju.com

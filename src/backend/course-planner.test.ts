@@ -68,4 +68,14 @@ describe('course planner', () => {
       transport: 'walking'
     });
   });
+
+  it('uses the selected language for deterministic recommendations', () => {
+    for (const lang of ['en', 'ja', 'zh'] as const) {
+      const plan = deterministicCoursePlan({ ...request, lang, days: 2 }, candidates);
+      expect(plan.days).toBe(2);
+      expect(plan.title).not.toMatch(/[가-힣]/);
+      expect(plan.summary).not.toMatch(/[가-힣]/);
+      expect(plan.stops.every(stop => stop.startTime && stop.endTime)).toBe(true);
+    }
+  });
 });

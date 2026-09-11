@@ -1,4 +1,6 @@
-import type { CommunityPost } from '@/shared/types';
+import type { CommunityPost, PlaceCategory } from '@/shared/types';
+
+type CommunityPlace = { content_id?: string; name?: string; address?: string; category?: PlaceCategory };
 
 type CommunityRow = {
   id: string;
@@ -10,8 +12,8 @@ type CommunityRow = {
   author_name: string;
   created_at: string;
   updated_at: string;
-  places?: { content_id?: string } | Array<{ content_id?: string }> | null;
-  community_media?: Array<{ public_path?: string | null }> | null;
+  places?: CommunityPlace | CommunityPlace[] | null;
+  community_media?: Array<{ public_path?: string | null; status?: string }> | null;
   community_bookmarks?: Array<{ actor_key?: string }> | null;
 };
 
@@ -24,6 +26,9 @@ export function mapCommunityPost(
     id: row.id,
     category: row.category,
     contentId: placeRelation?.content_id,
+    placeName: placeRelation?.name,
+    placeAddress: placeRelation?.address,
+    placeCategory: placeRelation?.category,
     title: row.title,
     content: row.content,
     rating: row.rating ?? undefined,
@@ -43,7 +48,7 @@ export function mapCommunityPost(
  * only prune the embedded rows unless the embed is declared `!inner`; use the
  * inner variants when the filter must exclude parent posts.
  */
-export function buildCommunitySelect(options: { placeInner?: boolean; bookmarkInner?: boolean } = {}) {
+export function buildCommunitySelect(options: { placeInner?: boolean; bookmarkInner?: boolean; mediaInner?: boolean } = {}) {
   return [
     'id',
     'actor_key',
@@ -54,8 +59,8 @@ export function buildCommunitySelect(options: { placeInner?: boolean; bookmarkIn
     'rating',
     'created_at',
     'updated_at',
-    options.placeInner ? 'places!inner(content_id)' : 'places(content_id)',
-    'community_media(public_path)',
+    options.placeInner ? 'places!inner(content_id, name, address, category)' : 'places(content_id, name, address, category)',
+    options.mediaInner ? 'community_media!inner(public_path, status)' : 'community_media(public_path)',
     options.bookmarkInner ? 'community_bookmarks!inner(actor_key)' : 'community_bookmarks(actor_key)'
   ].join(', ');
 }

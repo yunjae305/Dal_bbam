@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import OpenAI from 'openai';
+import type { Lang } from '@/shared/types';
 
 const DEFAULT_TEXT_MODEL = 'gpt-5.6-terra';
 const DEFAULT_TTS_MODEL = 'tts-1';
@@ -106,6 +107,10 @@ export async function generateStructured<T>({
   return { value, usage: response.usage ?? undefined, model };
 }
 
+export function speechVoice(lang: Lang): string {
+  return process.env[`OPENAI_TTS_VOICE_${lang.toUpperCase()}`]?.trim() || 'alloy';
+}
+
 export async function createSpeech(input: string, voice = 'alloy'): Promise<ArrayBuffer> {
   const model = process.env.OPENAI_TTS_MODEL?.trim() || DEFAULT_TTS_MODEL;
   const response = await openai().audio.speech.create({
@@ -180,16 +185,21 @@ export type ModerationResult = {
 };
 
 const emailPattern = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i;
-const phonePattern = /(?:\+?82[-.\s]?)?(?:0?1[016789]|0\d{1,2})[-.\s]?\d{3,4}[-.\s]?\d{4}/;
+const phonePattern = /(?<!\d)(?:\+?82[-.\s]?)?(?:0?1[016789]|0\d{1,2})[-.\s]?\d{3,4}[-.\s]?\d{4}(?!\d)/;
+const internationalPhonePattern = /(?<!\w)\+\d{1,3}[\s.-]?(?:\(?\d{1,4}\)?[\s.-]?){2,4}\d{3,4}(?!\d)/;
+const governmentIdPattern = /(?<!\d)\d{6}[-\s]?[1-8]\d{6}(?!\d)/;
+const labeledSensitiveIdPattern = /(?:passport|여권|护照|パスポート|account\s*(?:number|no\.?|#)|계좌(?:번호)?|银行卡|口座番号)\s*[:：]?\s*[A-Z0-9][A-Z0-9\s-]{5,24}\d/i;
 // Minimal keyword screen used when OpenAI moderation is switched off (FEATURE_AI=false or no key).
 const localBlockedPatterns: Array<[string, RegExp]> = [
-  ['harassment', /(?:씨발|시발|병신|개새끼|좆|fuck(?:ing)?|bitch|asshole)/i],
-  ['sexual', /(?:야동|섹스|porn|sex\s*video|nude)/i],
+  ['harassment', /(?:씨[\s.*_-]*발|시[\s.*_-]*발(?!점|역)|병[\s.*_-]*신|개[\s.*_-]*새끼|좆|\bfuck(?:ing)?\b|\bbitch\b|\basshole\b|操你妈|傻逼|死ね|くたばれ)/i],
+  ['sexual', /(?:야동|섹스|\bporn\b|\bsex\s*video\b|\bnude\b)/i],
   ['spam', /(?:카지노|casino|바카라|도박\s*사이트|대출\s*문의|텔레그램\s*@)/i]
 ];
 
 export function containsPersonalInformation(text: string): boolean {
-  return emailPattern.test(text) || phonePattern.test(text);
+  const normalized = text.normalize('NFKC').replace(/[\u200B-\u200D\uFEFF]/g, '');
+  return emailPattern.test(normalized) || phonePattern.test(normalized) || internationalPhonePattern.test(normalized) ||
+    governmentIdPattern.test(normalized) || labeledSensitiveIdPattern.test(normalized);
 }
 
 /** True when AI features may call OpenAI: feature flag on and a key configured. */
@@ -204,8 +214,9 @@ export function moderateContentLocally(text: string): ModerationResult {
     return { allowed: false, flagged: true, categories: { personal_information: true }, provider: 'local' };
   }
   const categories: Record<string, boolean> = {};
+  const normalized = text.normalize('NFKC').replace(/[\u200B-\u200D\uFEFF]/g, '');
   for (const [category, pattern] of localBlockedPatterns) {
-    if (pattern.test(text)) categories[category] = true;
+    if (pattern.test(normalized)) categories[category] = true;
   }
   const flagged = Object.keys(categories).length > 0;
   return { allowed: !flagged, flagged, categories, provider: 'local' };
@@ -218,13 +229,12 @@ export async function moderateContent({
   text: string;
   imageUrl?: string;
 }): Promise<ModerationResult> {
-  if (containsPersonalInformation(text)) {
-    return { allowed: false, flagged: true, categories: { personal_information: true }, provider: 'local' };
-  }
+  const localResult = moderateContentLocally(text);
+  if (!localResult.allowed) return localResult;
   if (!isOpenAiAvailable()) {
     // Without OpenAI the community still works with the keyword screen above;
     // images cannot be inspected, so they pass with only the size/type checks.
-    return moderateContentLocally(text);
+    return localResult;
   }
 
   const input: unknown[] = [{ type: 'text', text: text.slice(0, 10000) }];
@@ -236,6 +246,7 @@ export async function moderateContent({
   });
 
   const result = response.results[0];
+  if (!result || typeof result.flagged !== 'boolean') throw new Error('Moderation provider returned no valid result.');
   return {
     allowed: !result?.flagged,
     flagged: Boolean(result?.flagged),

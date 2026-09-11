@@ -17,8 +17,8 @@
  *   DAL_BBAM_ANDROID_TOOLS   where JDK 17 and the SDK are kept (default: ~/.dal-bbam-android)
  *
  * Every run rewrites android/twa/twa-manifest.json, regenerates the Android
- * project, builds, signs, copies the APK to android/dist/ and refreshes
- * public/.well-known/assetlinks.json with the signing certificate fingerprint.
+ * project, builds, signs, and copies the APK and a debug assetlinks preview to
+ * android/dist/. Production public/.well-known/assetlinks.json is never changed.
  */
 import { spawn, spawnSync } from 'node:child_process';
 import { createServer } from 'node:http';
@@ -29,7 +29,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const BUBBLEWRAP_VERSION = '1.25.0';
 const BUILD_TOOLS_VERSION = '36.1.0';
@@ -88,27 +88,81 @@ async function parseArgs(argv) {
   return args;
 }
 
-function quoteArg(value) {
-  return /[s"&|<>^()]/.test(value) ? `"${value.replaceAll('"', '\\"')}"` : value;
+function quoteBatchArgument(value) {
+  // cmd.exe expands %VAR% even inside quotes. Reject values that cannot be
+  // represented safely here; ordinary executable arguments never use a shell.
+  if (/["%\r\n\0]/.test(value)) {
+    throw new Error('Windows batch arguments cannot contain quotes, percent signs, or control characters.');
+  }
+  return `"${value}"`;
 }
 
-function shellCommand(command, args, useShell) {
-  return useShell ? [[command, ...args.map(quoteArg)].join(' '), []] : [command, args];
+export function commandInvocation(command, args, windows = isWindows, environment = process.env) {
+  if (!windows || !/\.(?:cmd|bat)$/i.test(command)) {
+    return { file: command, args, options: { shell: false } };
+  }
+  const quotedArgs = args.map(quoteBatchArgument);
+  quoteBatchArgument(command);
+  // A quoted bare PATH name can make a batch file's %~dp0 resolve to cwd.
+  // Resolve it first so npx.cmd can locate its own npm/bin directory.
+  let batchFile = command;
+  if (!/[\\/]/.test(command)) {
+    const pathKey = Object.keys(environment).find(key => key.toUpperCase() === 'PATH');
+    for (const directory of (environment[pathKey] ?? '').split(';').filter(Boolean)) {
+      const candidate = path.join(directory.replace(/^"|"$/g, ''), command);
+      if (existsSync(candidate)) {
+        batchFile = path.resolve(candidate);
+        break;
+      }
+    }
+  }
+  const batchCommand = [quoteBatchArgument(batchFile), ...quotedArgs].join(' ');
+  return {
+    file: process.env.ComSpec || 'cmd.exe',
+    args: ['/d', '/v:off', '/s', '/c', `"${batchCommand}"`],
+    options: { shell: false, windowsVerbatimArguments: true }
+  };
+}
+
+export function formatCommandForLog(command, args) {
+  let redactNext = false;
+  const safeArgs = args.map(value => {
+    if (redactNext) {
+      redactNext = false;
+      return '[redacted]';
+    }
+    if (/^--?(?:storepass|keypass|password)$/i.test(value)) redactNext = true;
+    return value.replace(/^(--?(?:storepass|keypass|password))=.*/i, '$1=[redacted]');
+  });
+  return [command, ...safeArgs].join(' ');
+}
+
+export function keytoolPasswordOptions(passwords, includeKeyPassword = true) {
+  return {
+    args: [
+      '-storepass:env', 'BUBBLEWRAP_KEYSTORE_PASSWORD',
+      ...(includeKeyPassword ? ['-keypass:env', 'BUBBLEWRAP_KEY_PASSWORD'] : [])
+    ],
+    env: {
+      BUBBLEWRAP_KEYSTORE_PASSWORD: passwords.keystore,
+      ...(includeKeyPassword ? { BUBBLEWRAP_KEY_PASSWORD: passwords.key } : {})
+    }
+  };
 }
 
 // Runs a command asynchronously so the local icon server (and the event loop)
 // keeps working while long-running tools such as Gradle execute.
 function run(command, args, options = {}) {
-  const pretty = [command, ...args].join(' ');
+  const pretty = formatCommandForLog(command, args);
   log(`$ ${pretty}`);
-  const useShell = options.shell ?? isWindows;
-  const [file, fileArgs] = shellCommand(command, args, useShell);
+  const environment = { ...process.env, ...(options.env ?? {}) };
+  const invocation = commandInvocation(command, args, isWindows, environment);
   return new Promise(resolve => {
-    const child = spawn(file, fileArgs, {
+    const child = spawn(invocation.file, invocation.args, {
       stdio: options.input === undefined ? 'inherit' : ['pipe', 'inherit', 'inherit'],
-      shell: useShell,
+      ...invocation.options,
       cwd: options.cwd,
-      env: { ...process.env, ...(options.env ?? {}) }
+      env: environment
     });
     if (options.input !== undefined) child.stdin.end(options.input);
     child.on('error', error => fail(`${pretty} failed: ${error.message}`));
@@ -120,13 +174,13 @@ function run(command, args, options = {}) {
 }
 
 function capture(command, args, options = {}) {
-  const useShell = options.shell ?? isWindows;
-  const [file, fileArgs] = shellCommand(command, args, useShell);
-  const result = spawnSync(file, fileArgs, {
+  const environment = { ...process.env, ...(options.env ?? {}) };
+  const invocation = commandInvocation(command, args, isWindows, environment);
+  const result = spawnSync(invocation.file, invocation.args, {
     encoding: 'utf8',
-    shell: useShell,
+    ...invocation.options,
     cwd: options.cwd,
-    env: { ...process.env, ...(options.env ?? {}) }
+    env: environment
   });
   return { status: result.status, stdout: result.stdout ?? '', stderr: result.stderr ?? '' };
 }
@@ -144,7 +198,10 @@ async function extractArchive(archive, destination) {
   await mkdir(destination, { recursive: true });
   if (archive.endsWith('.zip')) {
     if (isWindows) {
-      await run('powershell', ['-NoProfile', '-Command', `Expand-Archive -LiteralPath '${archive}' -DestinationPath '${destination}' -Force`], { shell: false });
+      await run('powershell', [
+        '-NoProfile', '-NonInteractive', '-Command',
+        'Expand-Archive -LiteralPath $env:DAL_BBAM_ARCHIVE_PATH -DestinationPath $env:DAL_BBAM_EXTRACT_PATH -Force'
+      ], { env: { DAL_BBAM_ARCHIVE_PATH: archive, DAL_BBAM_EXTRACT_PATH: destination } });
     } else {
       await run('unzip', ['-q', '-o', archive, '-d', destination], { shell: false });
     }
@@ -244,21 +301,22 @@ async function writeBubblewrapConfig(jdkPath, androidSdkPath) {
 async function ensureKeystore(jdkHome, passwords) {
   if (existsSync(keystorePath)) return;
   log('creating a local debug keystore (not for Play Store releases)');
+  const passwordOptions = keytoolPasswordOptions(passwords);
   await run(path.join(jdkHome, 'bin', isWindows ? 'keytool.exe' : 'keytool'), [
     '-genkeypair', '-v',
     '-keystore', keystorePath,
     '-alias', KEY_ALIAS,
     '-keyalg', 'RSA', '-keysize', '2048', '-validity', '10000',
-    '-storepass', passwords.keystore,
-    '-keypass', passwords.key,
+    ...passwordOptions.args,
     '-dname', 'CN=Dal bbam Test, OU=Dev, O=Dal bbam, L=Gyeongju, C=KR'
-  ], { shell: false });
+  ], { env: passwordOptions.env });
 }
 
 function certificateFingerprint(jdkHome, passwords) {
+  const passwordOptions = keytoolPasswordOptions(passwords, false);
   const result = capture(path.join(jdkHome, 'bin', isWindows ? 'keytool.exe' : 'keytool'), [
-    '-list', '-v', '-keystore', keystorePath, '-alias', KEY_ALIAS, '-storepass', passwords.keystore
-  ], { shell: false });
+    '-list', '-v', '-keystore', keystorePath, '-alias', KEY_ALIAS, ...passwordOptions.args
+  ], { env: passwordOptions.env });
   const match = result.stdout.match(/SHA256:\s*([0-9A-F:]{95})/i);
   return match ? match[1].toUpperCase() : null;
 }
@@ -311,8 +369,8 @@ function bubblewrap(args, env) {
   });
 }
 
-async function writeAssetLinks(packageId, fingerprint) {
-  const target = path.join(repoRoot, 'public', '.well-known', 'assetlinks.json');
+export async function writeDebugAssetLinks(packageId, fingerprint, root = repoRoot) {
+  const target = path.join(root, 'android', 'dist', 'assetlinks-debug.json');
   await mkdir(path.dirname(target), { recursive: true });
   await writeFile(target, `${JSON.stringify([{
     relation: ['delegate_permission/common.handle_all_urls'],
@@ -412,10 +470,11 @@ async function main() {
 
   const fingerprint = certificateFingerprint(jdkHome, passwords);
   if (fingerprint) {
-    const assetLinks = await writeAssetLinks(packageId, fingerprint);
-    log(`assetlinks.json updated (${fingerprint}) → ${assetLinks}. Deploy it so Chrome hides the URL bar.`);
+    const assetLinks = await writeDebugAssetLinks(packageId, fingerprint);
+    log(`debug certificate association preview: ${assetLinks} (${fingerprint}). Review it before publishing to a test host.`);
+    log('Production public/.well-known/assetlinks.json was preserved.');
   } else {
-    log('could not read the certificate fingerprint; assetlinks.json was not updated.');
+    log('could not read the certificate fingerprint; no debug assetlinks preview was written.');
   }
 
   if (args.install) {
@@ -426,4 +485,6 @@ async function main() {
   }
 }
 
-main().catch(error => fail(error instanceof Error ? error.stack ?? error.message : String(error)));
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
+  main().catch(error => fail(error instanceof Error ? error.stack ?? error.message : String(error)));
+}

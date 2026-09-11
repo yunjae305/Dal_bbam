@@ -7,6 +7,8 @@ import type { Narration, PlaceDetail } from '@/shared/types';
 import { EmptyState } from '@/frontend/components/common/feedback';
 import { useLocale } from '@/frontend/i18n/locale-context';
 import { uiMessages } from '@/shared/ui-messages';
+import { PlaceReviews } from '@/frontend/components/travel/place-reviews';
+import { HeritageInformation } from '@/frontend/components/travel/heritage-information';
 
 export function PlaceDetailScreen({ contentId }: { contentId: string }) {
   const router = useRouter();
@@ -21,20 +23,26 @@ export function PlaceDetailScreen({ contentId }: { contentId: string }) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
+    const controller = new AbortController();
     setLoading(true);
+    setNotice('');
     // Narration and its cached audio belong to the previous language.
     setNarration(null);
     audioRef.current?.pause();
     audioRef.current = null;
     setPlaying(false);
-    fetch(`/api/places/${encodeURIComponent(contentId)}?lang=${locale}`, { cache: 'no-store' })
+    fetch(`/api/places/${encodeURIComponent(contentId)}?lang=${locale}`, { cache: 'no-store', signal: controller.signal })
       .then(async response => {
         const payload = await response.json();
+        if (controller.signal.aborted) return;
         if (!response.ok) throw new Error(payload?.error?.message ?? ui.loadFailed);
         setPlace(payload.data);
-        const key = 'dal-bbam-recent-places';
-        const previous = JSON.parse(window.localStorage.getItem(key) || '[]') as string[];
-        window.localStorage.setItem(key, JSON.stringify([contentId, ...previous.filter(id => id !== contentId)].slice(0, 8)));
+        try {
+          const key = 'dal-bbam-recent-places';
+          const previous: unknown = JSON.parse(window.localStorage.getItem(key) || '[]');
+          const ids = Array.isArray(previous) ? previous.filter((id): id is string => typeof id === 'string' && id !== contentId) : [];
+          window.localStorage.setItem(key, JSON.stringify([contentId, ...ids].slice(0, 8)));
+        } catch { /* Public place details remain usable without local storage. */ }
         const viewKey = `dal-bbam-view:${contentId}`;
         if (!window.sessionStorage.getItem(viewKey)) {
           window.sessionStorage.setItem(viewKey, 'pending');
@@ -49,8 +57,9 @@ export function PlaceDetailScreen({ contentId }: { contentId: string }) {
           }).catch(() => window.sessionStorage.removeItem(viewKey));
         }
       })
-      .catch(error => setNotice(error instanceof Error ? error.message : ui.loadFailed))
-      .finally(() => setLoading(false));
+      .catch(error => { if (!controller.signal.aborted) setNotice(error instanceof Error ? error.message : ui.loadFailed); })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
   }, [contentId, locale, ui.loadFailed]);
   useEffect(() => () => audioRef.current?.pause(), []);
 
@@ -150,6 +159,8 @@ export function PlaceDetailScreen({ contentId }: { contentId: string }) {
           </dl>
         </section>
 
+        {place.category === 'heritage' && <HeritageInformation contentId={contentId} />}
+
         <section className="rounded-2xl bg-[#223c72] p-5 text-white">
           <div className="flex items-start justify-between gap-3">
             <div>
@@ -170,6 +181,7 @@ export function PlaceDetailScreen({ contentId }: { contentId: string }) {
           )}
         </section>
 
+        <PlaceReviews place={place} />
         <button type="button" onClick={addToCart} className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#ff5b4f] text-[12px] font-black text-white"><Bookmark size={17} /> {ui.saveToCart}</button>
       </div>
     </main>

@@ -7,6 +7,7 @@ import { getTourPlaceDetail, getTourPlaceImages, getTourPlaceIntro } from '@/bac
 import { placeToSummary, rowToPlaceDetail, stripProviderHtml, type DetailRow } from '@/backend/place-mapper';
 import { isLang } from '@/shared/i18n';
 import type { Lang, PlaceDetail } from '@/shared/types';
+import { tourCategory } from '@/shared/tour-category';
 
 type RouteContext = { params: Promise<{ contentId: string }> };
 type ProviderRow = Record<string, string | number | null | undefined>;
@@ -62,7 +63,12 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
           detail = {
             ...detail,
             rating: Math.round(average * 10) / 10,
-            reviewSummary: `${ratings.length}개 후기 평균 ${average.toFixed(1)}점`
+            reviewSummary: ({
+              ko: `${ratings.length}개 후기 평균 ${average.toFixed(1)}점`,
+              en: `${ratings.length} reviews · ${average.toFixed(1)} average`,
+              ja: `${ratings.length}件のレビュー · 平均${average.toFixed(1)}点`,
+              zh: `${ratings.length}条评价 · 平均${average.toFixed(1)}分`
+            })[lang]
           };
         }
       }
@@ -97,7 +103,7 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
         // four TourAPI list calls) is only consulted in the final fallback below.
         const item: PlaceDetail = {
           contentId,
-          category: 'attraction',
+          category: tourCategory(contentTypeId, field(row, 'cat1'), field(row, 'cat2')),
           name: field(row, 'title') || '경주 관광지',
           description: overview,
           overview,

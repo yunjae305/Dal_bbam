@@ -1,5 +1,6 @@
 import { timingSafeEqual } from 'node:crypto';
 import { getCurrentUser, type CurrentUser } from '@/backend/auth/current-user';
+import { isDemoModeEnabled, isIsolatedDemoTestEnvironment } from '@/backend/auth/demo';
 
 function safeTextEqual(actual: string, expected: string): boolean {
   const actualBytes = Buffer.from(actual);
@@ -17,6 +18,7 @@ function configuredAdminEmails(): Set<string> {
 }
 
 export function isAdminUser(user: CurrentUser | null): boolean {
+  if (user?.provider === 'demo' && !(isIsolatedDemoTestEnvironment() && isDemoModeEnabled())) return false;
   return Boolean(user?.email && configuredAdminEmails().has(user.email.trim().toLowerCase()));
 }
 
@@ -41,4 +43,3 @@ export async function authorizeAdminRequest(request: Request): Promise<{
 
   return { authorized: false, user, method: null };
 }
-

@@ -24,6 +24,14 @@ const contentSecurityPolicy = [
 ].filter(Boolean).join('; ');
 
 const nextConfig: NextConfig = {
+  images: {
+    formats: ['image/avif', 'image/webp'],
+    qualities: [60, 75],
+    remotePatterns: [
+      { protocol: 'https', hostname: 'commons.wikimedia.org', port: '', pathname: '/wiki/Special:FilePath/**', search: '' },
+      { protocol: 'https', hostname: 'upload.wikimedia.org', port: '', pathname: '/wikipedia/commons/**', search: '' }
+    ]
+  },
   devIndicators: false,
   allowedDevOrigins: ['127.0.0.1'],
   async headers() {

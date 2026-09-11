@@ -82,6 +82,31 @@ describe('ShortVideoPlayer', () => {
     expect(screen.getByRole('status')).toHaveTextContent('대표 이미지');
   });
 
+  it('shows a buffering indicator while an MP4 stalls and clears it on playback', () => {
+    const { container } = render(
+      <ShortVideoPlayer item={{ ...baseItem, videoUrl: 'https://cdn.example/night.mp4' }} active autoPlay />
+    );
+    const video = container.querySelector('video') as HTMLVideoElement;
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+
+    fireEvent.waiting(video);
+    expect(screen.getByRole('status')).toHaveTextContent('영상을 불러오는 중');
+
+    fireEvent.playing(video);
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
+
+  it('drops the buffering indicator when the clip fails outright', () => {
+    const { container } = render(
+      <ShortVideoPlayer item={{ ...baseItem, videoUrl: '/shorts/missing.mp4' }} active autoPlay />
+    );
+    const video = container.querySelector('video') as HTMLVideoElement;
+    fireEvent.waiting(video);
+    fireEvent.error(video);
+
+    expect(screen.getByRole('status')).toHaveTextContent('대표 이미지');
+  });
+
   it('keeps an image-only legacy short free of video controls', () => {
     render(<ShortVideoPlayer item={baseItem} active autoPlay />);
     expect(screen.getByRole('img', { name: baseItem.title })).toBeVisible();

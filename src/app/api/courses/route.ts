@@ -45,26 +45,32 @@ export async function POST(request: NextRequest) {
   if (isErrorContext(context)) return context.response;
 
   const body = await parseBody<CourseBody>(request);
-  if (!body || typeof body.title !== 'string' || !body.title.trim()) {
+  if (!body || typeof body.title !== 'string' || !body.title.trim() || body.title.trim().length > 80) {
     return apiError('INVALID_TITLE', 'title이 필요합니다.');
   }
-  if (body.description !== undefined && typeof body.description !== 'string') {
+  if (body.description !== undefined && (typeof body.description !== 'string' || body.description.length > 2000)) {
     return apiError('INVALID_COURSE', 'description 형식이 올바르지 않습니다.');
   }
+  if (body.isAiGenerated !== undefined && typeof body.isAiGenerated !== 'boolean') return apiError('INVALID_COURSE', 'isAiGenerated 형식이 올바르지 않습니다.');
   if (body.transport !== undefined && !transportModes.includes(body.transport)) {
     return apiError('INVALID_COURSE', 'transport는 walking, car, public 중 하나여야 합니다.');
   }
   if (body.contentIds !== undefined && !isStringArray(body.contentIds)) {
     return apiError('INVALID_COURSE', 'contentIds는 문자열 배열이어야 합니다.');
   }
-  if (body.reasons !== undefined && !Array.isArray(body.reasons)) {
+  if (body.reasons !== undefined && !isStringArray(body.reasons)) {
     return apiError('INVALID_COURSE', 'reasons는 배열이어야 합니다.');
   }
-  if (body.stayMinutes !== undefined && !Array.isArray(body.stayMinutes)) {
+  if (body.stayMinutes !== undefined && (!Array.isArray(body.stayMinutes) || body.stayMinutes.some(value => !Number.isInteger(value) || value < 15 || value > 240))) {
     return apiError('INVALID_COURSE', 'stayMinutes는 배열이어야 합니다.');
   }
 
-  const contentIds = Array.from(new Set((body.contentIds ?? []).map(id => id.trim()).filter(Boolean))).slice(0, 20);
+  const contentIds = (body.contentIds ?? []).map(id => id.trim());
+  if (!contentIds.length || contentIds.length > 20 || contentIds.some(id => !id || id.length > 100) || new Set(contentIds).size !== contentIds.length ||
+    (body.reasons !== undefined && body.reasons.length !== contentIds.length) ||
+    (body.stayMinutes !== undefined && body.stayMinutes.length !== contentIds.length)) {
+    return apiError('INVALID_COURSE', '중복되지 않는 1~20개 장소와 각 장소의 정보를 입력해 주세요.');
+  }
   const resolved = await Promise.all(contentIds.map(id => resolvePlaceId(context.db, id)));
   if (contentIds.length && resolved.some(id => !id)) {
     return apiError('PLACE_NOT_FOUND', '저장할 코스에 존재하지 않는 관광지가 있습니다.', 422);

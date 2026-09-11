@@ -98,6 +98,7 @@ export type ShortItem = {
 
 export type CourseRequest = {
   purpose?: string;
+  startTime?: string;
   days: number;
   companion: 'solo' | 'couple' | 'family' | 'friends' | 'group';
   interests: PlaceCategory[];
@@ -111,6 +112,12 @@ export type CourseStop = {
   order: number;
   reason: string;
   stayMinutes: number;
+  dayIndex?: number;
+  startTime?: string;
+  endTime?: string;
+  travelMinutes?: number;
+  distanceMeters?: number;
+  travelPath?: [number, number][];
   place?: PlaceSummary;
 };
 
@@ -123,6 +130,9 @@ export type CoursePlan = {
   totalDistanceMeters: number;
   estimatedMinutes: number;
   generatedBy: 'openai' | 'fallback' | 'curated';
+  days?: number;
+  startTime?: string;
+  timingSource?: 'map-provider' | 'estimated' | 'mixed';
   shareToken?: string;
 };
 
@@ -196,6 +206,9 @@ export type CommunityPost = {
   id: string;
   category: 'review' | 'tip' | 'food' | 'lodging';
   contentId?: string;
+  placeName?: string;
+  placeAddress?: string;
+  placeCategory?: PlaceCategory;
   title: string;
   content: string;
   rating?: number;

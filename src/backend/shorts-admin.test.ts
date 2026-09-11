@@ -3,7 +3,9 @@ import {
   adminRateLimitActor,
   adminShortInsertColumns,
   adminShortUpdateColumns,
+  mapAdminShortRow,
   validateAdminShortCreate,
+  validateAdminShortMedia,
   validateAdminShortPatch
 } from '@/backend/shorts-admin';
 
@@ -58,6 +60,44 @@ describe('admin short validation and write mapping', () => {
       videoUrl: null
     });
     expect(empty.ok).toBe(false);
+  });
+
+  it.each(['/prepared-introduction.mp4', `https://youtu.be/${YOUTUBE_ID}`])('accepts a finished video without a narration script: %s', videoUrl => {
+    const result = validateAdminShortCreate({
+      contentId: 'tour-place-1', title: '첨성대가 들려주는 이야기', summary: '미리 제작한 문화재 소개',
+      videoUrl, lang: 'en', isPublished: false
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(adminShortInsertColumns(result.value, 'place-uuid')).toMatchObject({ narration: '', lang: 'en', is_published: false });
+  });
+
+  it('requires narration for image-only shorts and rejects malformed optional scripts', () => {
+    const base = { contentId: 'tour-place-1', title: '소개', summary: '요약' };
+    expect(validateAdminShortCreate({ ...base, imageUrl: '/poster.jpg' }).ok).toBe(false);
+    expect(validateAdminShortCreate({ ...base, videoUrl: '/clip.mp4', narration: 7 }).ok).toBe(false);
+    expect(validateAdminShortCreate({ ...base, videoUrl: '/clip.mp4', narration: 'x'.repeat(6001) }).ok).toBe(false);
+    expect(validateAdminShortCreate({ ...base, videoUrl: '/clip.mp4', narration: '   ' }).ok).toBe(true);
+  });
+
+  it('permits an empty PATCH narration for later merged-source validation', () => {
+    expect(validateAdminShortPatch({ shortId: SHORT_ID, narration: '  ' })).toMatchObject({ ok: true, value: { narration: '' } });
+    expect(validateAdminShortPatch({ shortId: SHORT_ID, narration: null }).ok).toBe(false);
+    expect(validateAdminShortMedia({ narration: '', imageUrl: '/poster.jpg', videoUrl: null, youtubeVideoId: null }).ok).toBe(false);
+    expect(validateAdminShortMedia({ narration: '', imageUrl: null, videoUrl: '/clip.mp4', youtubeVideoId: null }).ok).toBe(true);
+  });
+
+  it('keeps edit metadata and null source fields without inserting a display poster', () => {
+    expect(mapAdminShortRow({
+      id: SHORT_ID, place_id: 'place-uuid', places: [{ content_id: 'tour-place-1' }], lang: 'ja',
+      title: '紹介', summary: '概要', narration: '', image_url: null, audio_url: null,
+      video_url: '/clip.mp4', youtube_video_id: null, is_published: false, duration_seconds: 38,
+      tags: ['역사'], created_at: '2026-09-06T00:00:00Z', updated_at: '2026-09-06T01:00:00Z'
+    })).toMatchObject({
+      id: SHORT_ID, contentId: 'tour-place-1', lang: 'ja', narration: '', imageUrl: null, audioUrl: null,
+      videoUrl: '/clip.mp4', youtubeVideoId: null, isPublished: false, isAiGenerated: false,
+      durationSeconds: 38, updatedAt: '2026-09-06T01:00:00Z'
+    });
   });
 
   it('maps a PATCH null video source to both database columns', () => {
