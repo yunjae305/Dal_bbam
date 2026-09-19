@@ -129,15 +129,15 @@ export function CommunityScreen() {
   }
 
   return (
-    <section className="min-h-dvh bg-[#fffdfa] pb-10">
+    <section className="min-h-[calc(100dvh-112px)] bg-[#fffdfa] pb-6">
       <header className="sticky top-12 z-20 border-b border-black/5 bg-[#fffdfa]/95 px-5 pb-4 pt-6 backdrop-blur">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <p className="text-[10px] font-black tracking-[0.18em] text-[#f45f62]">TRAVEL TOGETHER</p>
+            <p className="text-[10px] font-black tracking-[0.18em] text-[#ff5b4f]">TRAVEL TOGETHER</p>
             <h1 className="mt-1 text-[25px] font-black tracking-tight text-[#172f58]">{messages.community.title}</h1>
             <p className="mt-1 text-[10px] font-semibold text-[#8f8b86]">{ui.subtitle}</p>
           </div>
-          <button type="button" onClick={() => setEditorPost(null)} className="grid min-h-12 min-w-12 place-items-center rounded-full bg-[#f45f62] text-white shadow-lg shadow-red-200/60" aria-label={messages.community.newPost}><Plus size={23} /></button>
+          <button type="button" onClick={() => setEditorPost(null)} className="grid min-h-12 min-w-12 place-items-center rounded-full bg-[#ff5b4f] text-white shadow-lg shadow-red-200/60" aria-label={messages.community.newPost}><Plus size={23} /></button>
         </div>
 
         <label className="mt-5 flex min-h-12 items-center gap-3 rounded-2xl bg-[#f1f0ee] px-4 text-[#767b83]">
@@ -148,7 +148,7 @@ export function CommunityScreen() {
 
         <div className="mt-4 flex gap-2 overflow-x-auto pb-1" aria-label={ui.filtersLabel}>
           {categoryOptions.map(item => (
-            <button key={item.value} type="button" onClick={() => setCategory(item.value)} aria-pressed={category === item.value} className={`min-h-10 shrink-0 rounded-full px-4 text-[10px] font-black ${category === item.value ? 'bg-[#f45f62] text-white' : 'bg-[#f1f0ee] text-[#28364d]'}`}>{item.label}</button>
+            <button key={item.value} type="button" onClick={() => setCategory(item.value)} aria-pressed={category === item.value} className={`min-h-10 shrink-0 rounded-full px-4 text-[10px] font-black ${category === item.value ? 'bg-[#ff5b4f] text-white' : 'bg-[#f1f0ee] text-[#28364d]'}`}>{item.label}</button>
           ))}
           <button type="button" onClick={() => setBookmarkedOnly(current => !current)} aria-pressed={bookmarkedOnly} className={`inline-flex min-h-10 shrink-0 items-center gap-1 rounded-full px-4 text-[10px] font-black ${bookmarkedOnly ? 'bg-[#173e78] text-white' : 'bg-[#f1f0ee] text-[#28364d]'}`}><Bookmark size={13} fill={bookmarkedOnly ? 'currentColor' : 'none'} /> {ui.savedFilter}</button>
         </div>
@@ -177,18 +177,18 @@ export function CommunityScreen() {
             <Link href={`/community/${post.id}`} className="block focus-visible:outline-offset-[-3px]">
               {post.mediaUrls[0] && <img src={post.mediaUrls[0]} alt={ui.attachmentPhoto.replace('{title}', post.title)} loading="lazy" className="aspect-[16/10] w-full object-cover" />}
               <div className="p-5 pb-3">
-                <div className="flex items-center gap-2 text-[9px] font-black"><span className="rounded-full bg-[#fff0ed] px-2.5 py-1 text-[#f45f62]">{categoryLabels[post.category]}</span>{post.contentId && <span className="inline-flex items-center gap-1 text-[#667080]"><MapPin size={11} /> {ui.placeLinked}</span>}</div>
+                <div className="flex items-center gap-2 text-[9px] font-black"><span className="rounded-full bg-[#fff0ed] px-2.5 py-1 text-[#ff5b4f]">{categoryLabels[post.category]}</span>{post.contentId && <span className="inline-flex items-center gap-1 text-[#667080]"><MapPin size={11} /> {ui.placeLinked}</span>}</div>
                 <h2 className="mt-3 text-[17px] font-black leading-6 tracking-tight text-[#172f58]">{post.title}</h2>
                 {post.placeName && <p className="mt-1 text-[10px] text-[#667080]">{post.placeName} · {post.placeAddress}</p>}
                 <p className="mt-2 line-clamp-3 whitespace-pre-line text-[11px] font-medium leading-5 text-[#69717e]">{post.content}</p>
                 <div className="mt-4 flex items-end justify-between gap-3">
                   <div><p className="text-[10px] font-black text-[#273550]">{post.authorName}</p><p className="mt-0.5 text-[9px] font-semibold text-[#a09c96]">{new Date(post.createdAt).toLocaleDateString(locale)}</p></div>
-                  {post.rating && <p className="inline-flex items-center gap-1 text-[10px] font-black text-[#f45f62]"><Star size={14} fill="currentColor" /> {post.rating}.0</p>}
+                  {post.rating && <p className="inline-flex items-center gap-1 text-[10px] font-black text-[#ff5b4f]"><Star size={14} fill="currentColor" /> {post.rating}.0</p>}
                 </div>
               </div>
             </Link>
             <div className="flex min-h-12 items-center justify-between border-t border-[#f0ece7] px-4">
-              <button type="button" onClick={() => void toggleBookmark(post)} aria-label={post.bookmarked ? ui.bookmarkRemove : ui.bookmarkSave} aria-pressed={post.bookmarked} className={`grid min-h-11 min-w-11 place-items-center ${post.bookmarked ? 'text-[#f45f62]' : 'text-[#6f7580]'}`}><Bookmark size={18} fill={post.bookmarked ? 'currentColor' : 'none'} /></button>
+              <button type="button" onClick={() => void toggleBookmark(post)} aria-label={post.bookmarked ? ui.bookmarkRemove : ui.bookmarkSave} aria-pressed={post.bookmarked} className={`grid min-h-11 min-w-11 place-items-center ${post.bookmarked ? 'text-[#ff5b4f]' : 'text-[#6f7580]'}`}><Bookmark size={18} fill={post.bookmarked ? 'currentColor' : 'none'} /></button>
               {post.isOwner && <div className="flex items-center gap-1"><button type="button" onClick={() => setEditorPost(post)} className="inline-flex min-h-11 items-center gap-1 px-3 text-[9px] font-black text-[#173e78]"><Pencil size={13} /> {ui.edit}</button><button type="button" onClick={() => void remove(post)} className="inline-flex min-h-11 items-center gap-1 px-3 text-[9px] font-black text-[#d94e51]"><Trash2 size={13} /> {ui.delete}</button></div>}
             </div>
           </article>
@@ -201,5 +201,5 @@ export function CommunityScreen() {
 }
 
 function CommunitySkeleton({ label, loadingLabel }: { label: string; loadingLabel: string }) {
-  return <div className="space-y-5" aria-label={label} aria-busy="true">{[0, 1, 2].map(index => <div key={index} className="overflow-hidden rounded-3xl bg-white p-4 shadow-sm"><SkeletonBox className="aspect-[16/8] w-full" /><SkeletonBox className="mt-4 h-4 w-2/3" /><SkeletonBox className="mt-3 h-3 w-full" /><SkeletonBox className="mt-2 h-3 w-4/5" /><div className="mt-4 flex items-center gap-2"><LoaderCircle size={13} className="animate-spin text-[#f45f62]" /><span className="text-[9px] font-bold text-[#8d8a86]">{loadingLabel}</span></div></div>)}</div>;
+  return <div className="space-y-5" aria-label={label} aria-busy="true">{[0, 1, 2].map(index => <div key={index} className="overflow-hidden rounded-3xl bg-white p-4 shadow-sm"><SkeletonBox className="aspect-[16/8] w-full" /><SkeletonBox className="mt-4 h-4 w-2/3" /><SkeletonBox className="mt-3 h-3 w-full" /><SkeletonBox className="mt-2 h-3 w-4/5" /><div className="mt-4 flex items-center gap-2"><LoaderCircle size={13} className="animate-spin text-[#ff5b4f]" /><span className="text-[9px] font-bold text-[#8d8a86]">{loadingLabel}</span></div></div>)}</div>;
 }

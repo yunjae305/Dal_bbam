@@ -222,7 +222,7 @@ export function AiCourseScreen({ places }: Props) {
   }
 
   return (
-    <section className="min-h-[calc(100dvh-40px)] bg-[#fbfaf8]">
+    <section className="min-h-[calc(100dvh-112px)] bg-[#fbfaf8]">
       <PhoneStatus />
       <HeaderBar title={ui.header} right={<Sparkles size={18} className="text-[#ff5b4f]" />} />
       <div className="px-5 pb-28">

@@ -193,14 +193,14 @@ export function CommunityPostEditor({ post, initialPlace, onClose, onSaved }: Pr
         <header className="sticky top-0 z-10 -mx-5 flex min-h-16 items-center justify-between border-b border-black/5 bg-[#fffdfa]/95 px-5 backdrop-blur">
           <button type="button" onClick={requestClose} className="min-h-11 min-w-11 text-left text-[12px] font-black text-[#173e78]">{ui.cancel}</button>
           <h1 id="community-editor-title" className="text-[18px] font-black text-[#173e78]">{post ? ui.editPost : ui.newPost}</h1>
-          <button type="button" onClick={() => void submit()} disabled={busy || missingPlace || !form.title.trim() || !form.content.trim()} className="min-h-11 min-w-11 text-right text-[12px] font-black text-[#f45f62] disabled:opacity-40">{ui.save}</button>
+          <button type="button" onClick={() => void submit()} disabled={busy || missingPlace || !form.title.trim() || !form.content.trim()} className="min-h-11 min-w-11 text-right text-[12px] font-black text-[#ff5b4f] disabled:opacity-40">{ui.save}</button>
         </header>
 
         <section className="pt-7">
           <h2 className="text-[23px] font-black tracking-tight text-[#173e78]">{ui.prompt}</h2>
           <div className="mt-5 grid grid-cols-4 gap-2" aria-label={ui.categoryLabel}>
             {categories.map(item => (
-              <button key={item.value} type="button" onClick={() => setForm(current => ({ ...current, category: item.value }))} aria-pressed={form.category === item.value} className={`min-h-11 rounded-2xl text-[11px] font-black ${form.category === item.value ? 'bg-[#f45f62] text-white' : 'border border-[#e2ddd5] bg-white text-[#173e78]'}`}>{item.label}</button>
+              <button key={item.value} type="button" onClick={() => setForm(current => ({ ...current, category: item.value }))} aria-pressed={form.category === item.value} className={`min-h-11 rounded-2xl text-[11px] font-black ${form.category === item.value ? 'bg-[#ff5b4f] text-white' : 'border border-[#e2ddd5] bg-white text-[#173e78]'}`}>{item.label}</button>
             ))}
           </div>
 
@@ -225,7 +225,7 @@ export function CommunityPostEditor({ post, initialPlace, onClose, onSaved }: Pr
               </div>
             ) : !post && (
               <label className="mt-3 flex min-h-28 cursor-pointer flex-col items-center justify-center gap-2 rounded-3xl border border-dashed border-[#cfc8bf] bg-[#f7f4ef] text-[10px] font-black text-[#6f747c]">
-                <Camera size={22} className="text-[#f45f62]" /> {ui.addPhoto}
+                <Camera size={22} className="text-[#ff5b4f]" /> {ui.addPhoto}
                 <input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" onChange={event => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void upload(file); }} />
               </label>
             )}
@@ -241,13 +241,13 @@ export function CommunityPostEditor({ post, initialPlace, onClose, onSaved }: Pr
             <span className="mt-1 block text-right text-[9px] font-medium text-[#98938d]">{form.content.length}/5000</span>
           </label>
 
-          {ratingEnabled && <fieldset className="mt-4 rounded-2xl border border-[#e2ddd5] bg-white p-4"><legend className="px-1 text-[12px] font-black text-[#173e78]">{ui.rating}</legend><div className="mt-1 flex justify-between">{[1, 2, 3, 4, 5].map(value => <button key={value} type="button" onClick={() => setForm(current => ({ ...current, rating: value }))} className="grid min-h-11 min-w-11 place-items-center" aria-label={ui.points.replace('{value}', String(value))}><Star size={27} className={value <= form.rating ? 'fill-[#f45f62] text-[#f45f62]' : 'text-[#d5d0ca]'} /></button>)}</div></fieldset>}
+          {ratingEnabled && <fieldset className="mt-4 rounded-2xl border border-[#e2ddd5] bg-white p-4"><legend className="px-1 text-[12px] font-black text-[#173e78]">{ui.rating}</legend><div className="mt-1 flex justify-between">{[1, 2, 3, 4, 5].map(value => <button key={value} type="button" onClick={() => setForm(current => ({ ...current, rating: value }))} className="grid min-h-11 min-w-11 place-items-center" aria-label={ui.points.replace('{value}', String(value))}><Star size={27} className={value <= form.rating ? 'fill-[#ff5b4f] text-[#ff5b4f]' : 'text-[#d5d0ca]'} /></button>)}</div></fieldset>}
 
           <p className="mt-5 rounded-2xl bg-[#fff0ed] p-4 text-[10px] font-bold leading-5 text-[#8d5550]">{ui.privacyNote}</p>
           {moderationReady === false && <p className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-[10px] font-bold leading-5 text-amber-800" role="status">{copy.imageScanUnavailable}</p>}
           {notice && <p className="mt-3 rounded-2xl bg-[#f1eee9] p-4 text-[10px] font-bold leading-5 text-[#765b57]" role="status">{notice}</p>}
 
-          <button type="button" onClick={() => void submit()} disabled={busy || missingPlace || !form.title.trim() || !form.content.trim()} className="mt-5 flex min-h-14 w-full items-center justify-center gap-2 rounded-2xl bg-[#f45f62] text-[12px] font-black text-white shadow-lg shadow-red-200/60 disabled:opacity-40">
+          <button type="button" onClick={() => void submit()} disabled={busy || missingPlace || !form.title.trim() || !form.content.trim()} className="mt-5 flex min-h-14 w-full items-center justify-center gap-2 rounded-2xl bg-[#ff5b4f] text-[12px] font-black text-white shadow-lg shadow-red-200/60 disabled:opacity-40">
             {busy ? <LoaderCircle size={17} className="animate-spin" /> : post ? ui.saveChanges : ui.publish}
           </button>
         </section>

@@ -147,7 +147,7 @@ export function CommunityDetailScreen({ id }: { id: string }) {
         <Link href="/community" aria-label={ui.backToListLabel} className="grid min-h-11 min-w-11 place-items-center text-[#173e78]"><ArrowLeft size={24} /></Link>
         <p className="text-[16px] font-black text-[#173e78]">{categoryLabels[post.category]}</p>
         <div className="relative flex items-center">
-          <button type="button" onClick={() => void toggleBookmark()} aria-label={post.bookmarked ? ui.bookmarkRemove : ui.bookmarkSave} aria-pressed={post.bookmarked} className={`grid min-h-11 min-w-11 place-items-center ${post.bookmarked ? 'text-[#f45f62]' : 'text-[#173e78]'}`}><Bookmark size={22} fill={post.bookmarked ? 'currentColor' : 'none'} /></button>
+          <button type="button" onClick={() => void toggleBookmark()} aria-label={post.bookmarked ? ui.bookmarkRemove : ui.bookmarkSave} aria-pressed={post.bookmarked} className={`grid min-h-11 min-w-11 place-items-center ${post.bookmarked ? 'text-[#ff5b4f]' : 'text-[#173e78]'}`}><Bookmark size={22} fill={post.bookmarked ? 'currentColor' : 'none'} /></button>
           <button type="button" onClick={() => setMenuOpen(current => !current)} aria-label={ui.postMenu} aria-expanded={menuOpen} className="grid min-h-11 min-w-11 place-items-center text-[#173e78]"><MoreHorizontal size={23} /></button>
           {menuOpen && <div className="absolute right-0 top-12 z-30 w-36 overflow-hidden rounded-2xl bg-white py-1 shadow-xl ring-1 ring-black/5">{post.isOwner ? <><button type="button" onClick={() => { setMenuOpen(false); setEditing(true); }} className="flex min-h-11 w-full items-center gap-2 px-4 text-[10px] font-black text-[#173e78]"><Pencil size={14} /> {ui.edit}</button><button type="button" onClick={() => void remove()} className="flex min-h-11 w-full items-center gap-2 px-4 text-[10px] font-black text-[#d94e51]"><Trash2 size={14} /> {ui.delete}</button></> : <><button type="button" onClick={() => void reportPost()} className="flex min-h-11 w-full items-center gap-2 px-4 text-[10px] font-black text-[#b94f4a]"><Flag size={14} /> {ui.report}</button><button type="button" onClick={() => void blockAuthor()} className="flex min-h-11 w-full items-center gap-2 px-4 text-[10px] font-black text-[#333943]"><Ban size={14} /> {ui.blockAuthor}</button></>}</div>}
         </div>
@@ -157,14 +157,14 @@ export function CommunityDetailScreen({ id }: { id: string }) {
 
       <div className="px-5 pb-8 pt-6">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="rounded-full bg-[#f45f62] px-3 py-1.5 text-[9px] font-black text-white">{categoryLabels[post.category]}</span>
+          <span className="rounded-full bg-[#ff5b4f] px-3 py-1.5 text-[9px] font-black text-white">{categoryLabels[post.category]}</span>
           {post.contentId && <span className="inline-flex items-center gap-1 rounded-full bg-[#eef1f6] px-3 py-1.5 text-[9px] font-black text-[#173e78]"><MapPin size={11} /> {ui.placeLinked}</span>}
         </div>
         <h1 className="mt-5 text-[27px] font-black leading-[1.35] tracking-tight text-[#10284e]">{post.title}</h1>
 
         <div className="mt-5 flex items-center justify-between gap-4 border-b border-[#eee9e3] pb-5">
           <div><p className="text-[11px] font-black text-[#263550]">{post.authorName}</p><p className="mt-1 text-[9px] font-semibold text-[#9d9993]">{new Date(post.createdAt).toLocaleDateString(locale)}</p></div>
-          {post.rating && <p className="inline-flex items-center gap-1 text-[11px] font-black text-[#f45f62]"><Star size={17} fill="currentColor" /> {post.rating}.0</p>}
+          {post.rating && <p className="inline-flex items-center gap-1 text-[11px] font-black text-[#ff5b4f]"><Star size={17} fill="currentColor" /> {post.rating}.0</p>}
         </div>
 
         <p className="mt-6 whitespace-pre-line text-[13px] font-medium leading-7 text-[#333943]">{post.content}</p>
@@ -174,7 +174,7 @@ export function CommunityDetailScreen({ id }: { id: string }) {
         {notice && <p className="mt-4 rounded-2xl bg-[#fff0ed] p-4 text-[10px] font-bold text-[#8d5550]" role="status">{notice}</p>}
 
         <section className="mt-9 border-t border-[#eee9e3] pt-7">
-          <h2 className="text-[16px] font-black text-[#10284e]">{ui.comments} <span className="tabular-nums text-[#f45f62]">{comments.length}</span></h2>
+          <h2 className="text-[16px] font-black text-[#10284e]">{ui.comments} <span className="tabular-nums text-[#ff5b4f]">{comments.length}</span></h2>
           <form onSubmit={submitComment} className="mt-4 flex items-end gap-2">
             <label className="min-w-0 flex-1"><span className="sr-only">{ui.commentInput}</span><textarea value={comment} onChange={event => setComment(event.target.value)} maxLength={1000} rows={2} placeholder={ui.commentPlaceholder} className="min-h-12 w-full resize-none rounded-2xl border border-[#e8e3dc] bg-white px-4 py-3 text-[12px] outline-none focus:border-[#173e78] focus:ring-4 focus:ring-[#173e78]/10" /></label>
             <button type="submit" disabled={!comment.trim() || commentLoading} aria-label={ui.commentPublish} className="grid min-h-12 min-w-12 place-items-center rounded-2xl bg-[#173e78] text-white transition-[transform,opacity] active:scale-[0.96] disabled:opacity-40">{commentLoading ? <LoaderCircle className="animate-spin" size={18} /> : <Send size={18} />}</button>

@@ -219,9 +219,9 @@ export function MapPageScreen({ places }: { places: Place[] }) {
         </div>
 
         <div className="pointer-events-auto flex gap-2 overflow-x-auto pb-1">
-          <button type="button" onClick={() => chooseCategory('all')} className={`shrink-0 rounded-full px-3.5 py-2 text-[10px] font-black shadow-sm ${category === 'all' ? 'bg-[#b94f4a] text-white' : 'bg-white text-[#25211d]'}`}>{messages.common.all}</button>
+          <button type="button" onClick={() => chooseCategory('all')} className={`inline-flex min-h-10 shrink-0 items-center rounded-full px-3.5 text-[10px] font-black shadow-sm ${category === 'all' ? 'bg-[#b94f4a] text-white' : 'bg-white text-[#25211d]'}`}>{messages.common.all}</button>
           {placeCategories.map(item => (
-            <button key={item} type="button" onClick={() => chooseCategory(item)} className={`shrink-0 rounded-full px-3.5 py-2 text-[10px] font-black shadow-sm ${category === item ? 'bg-[#b94f4a] text-white' : 'bg-white text-[#25211d]'}`}>
+            <button key={item} type="button" onClick={() => chooseCategory(item)} className={`inline-flex min-h-10 shrink-0 items-center rounded-full px-3.5 text-[10px] font-black shadow-sm ${category === item ? 'bg-[#b94f4a] text-white' : 'bg-white text-[#25211d]'}`}>
               {messages.categories[item]}
             </button>
           ))}

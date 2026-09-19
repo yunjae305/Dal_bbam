@@ -210,7 +210,7 @@ export function TravelCartScreen({ places, userEmail }: Props) {
   }
 
   return (
-    <section className="min-h-[calc(100dvh-40px)] bg-[#fbfaf8]">
+    <section className="min-h-[calc(100dvh-112px)] bg-[#fbfaf8]">
       <PhoneStatus />
       <HeaderBar title={ui.header} right={<Heart size={18} className="text-[#ff5146]" fill="currentColor" />} />
       <div className="px-5 pb-36">

@@ -176,7 +176,7 @@ export function PlaceDetailScreen({ contentId }: { contentId: string }) {
   if (!place) return <main className="p-5"><EmptyState title={ui.notFound} description={notice} /></main>;
 
   return (
-    <main className="min-h-dvh bg-[#f7f4ef] pb-28">
+    <main className="min-h-[calc(100dvh-112px)] bg-[#f7f4ef] pb-6">
       <div className="relative h-[42dvh] min-h-[300px]">
         {place.imageUrl && <img src={place.imageUrl} alt={place.name} className="h-full w-full object-cover" />}
         <div className="absolute inset-0 bg-gradient-to-t from-black/65 via-transparent to-black/35" />

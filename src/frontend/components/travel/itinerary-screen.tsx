@@ -302,7 +302,7 @@ export function ItineraryScreen({ places }: Props) {
   }
 
   return (
-    <section className="min-h-[calc(100dvh-40px)] bg-[#fbfaf8]">
+    <section className="min-h-[calc(100dvh-112px)] bg-[#fbfaf8]">
       <PhoneStatus />
       <HeaderBar
         title={active?.title ?? ui.header}

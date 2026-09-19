@@ -358,7 +358,7 @@ export function StampTourScreen({ places, onExplore, onBack }: Props) {
   const progress = cataloguePlaces.length ? Math.min(100, (acquiredTargetCount / cataloguePlaces.length) * 100) : 0;
 
   return (
-    <section className="min-h-[calc(100dvh-40px)] bg-[#fbfaf8] px-5 pb-28 pt-5 antialiased">
+    <section className="min-h-[calc(100dvh-112px)] bg-[#fbfaf8] px-5 pb-6 pt-5 antialiased">
       {pendingPlace && (
         <div className="fixed inset-0 z-50 grid place-items-center bg-black/45 px-5" role="dialog" aria-modal="true" aria-labelledby="stamp-consent-title">
           <div className="relative w-full max-w-[390px] rounded-3xl bg-white p-6 shadow-2xl">
