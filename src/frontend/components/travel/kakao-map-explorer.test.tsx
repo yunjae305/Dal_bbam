@@ -15,6 +15,7 @@ vi.mock('@/frontend/i18n/locale-context', () => ({
     locale: 'ko',
     messages: {
       common: { close: '닫기', retry: '다시 시도' },
+      categories: { heritage: '문화유산', attraction: '관광지', food: '맛집', lodging: '숙박', festival: '축제', nature: '자연', experience: '체험' },
       map: {
         title: '경주 지도', currentLocation: '현재 위치', consentTitle: '위치 동의',
         consentBody: '위치를 사용합니다.', allow: '동의하고 위치 사용', decline: '수동 탐색',
@@ -189,16 +190,14 @@ describe('KakaoMapExplorer route state', () => {
     expect(url.searchParams.get('originLat')).toBe('35.8562');
     expect(url.searchParams.get('destinationName')).toBe('첨성대');
 
-    expect(await screen.findByRole('button', { name: /^도보\s*25분/ })).toBeVisible();
+    // 자동차가 기본으로 잡히고, 나머지 수단은 시간과 거리가 함께 보인다.
+    expect(await screen.findByRole('button', { name: '자동차' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: /^도보\s*25분/ })).toBeVisible();
     expect(screen.getByRole('button', { name: /^대중교통\s*1시간 10분/ })).toBeVisible();
     expect(screen.getByRole('button', { name: /^자전거\s*10분/ })).toBeVisible();
-    expect(screen.getByRole('button', { name: /^자동차\s*5분/ })).toHaveAttribute('aria-pressed', 'true');
 
-    // 거리는 탭이 아니라 아래 요약 줄에 있다.
-    fireEvent.click(screen.getByRole('button', { name: /^도보/ }));
-    expect(await screen.findByText(/1\.0km/)).toBeVisible();
 
-    fireEvent.click(screen.getByRole('button', { name: /대중교통/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^대중교통\s*1시간 10분/ }));
     expect(await screen.findByText(/환승 1회 · 요금 1,450원/)).toBeVisible();
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
@@ -278,7 +277,7 @@ describe('KakaoMapExplorer route state', () => {
     await waitFor(() => expect(kakao.polylineInstances).toHaveLength(1));
     const carLine = kakao.polylineInstances[0];
 
-    fireEvent.click(screen.getByRole('button', { name: /도보/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^도보\s*25분/ }));
     await waitFor(() => expect(carLine.setMap).toHaveBeenCalledWith(null));
     await waitFor(() => expect(kakao.polylineInstances).toHaveLength(2));
     const walkingLine = kakao.polylineInstances[1];
@@ -318,7 +317,6 @@ describe('KakaoMapExplorer route state', () => {
     const arrival = new Date(Date.now() + 300 * 1000).toLocaleTimeString('ko', { hour: '2-digit', minute: '2-digit' });
     expect(await screen.findByText(new RegExp(`${arrival} 도착 예정`))).toBeVisible();
 
-    fireEvent.click(screen.getByRole('button', { name: '경로 안내' }));
     const step = await screen.findByRole('button', { name: '1번 지점 지도에서 보기' });
     fireEvent.click(step);
     expect(map.panTo).toHaveBeenCalled();

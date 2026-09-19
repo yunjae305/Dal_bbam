@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { MapPin, Navigation, RotateCw, Search } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import type { Category, Place, PlaceCategory } from '@/shared/types';
 import { placeCategories } from '@/shared/types';
 import {
@@ -90,7 +90,8 @@ export function MapPageScreen({ places }: { places: Place[] }) {
   const initialCategory: Category = placeCategories.includes(requestedCategory as PlaceCategory)
     ? requestedCategory as PlaceCategory
     : 'all';
-  const [selectedId, setSelectedId] = useState(places[0]?.contentId ?? '');
+  // 지도 앱처럼 처음에는 아무 장소도 고르지 않은 상태로 시작한다.
+  const [selectedId, setSelectedId] = useState('');
   const [query, setQuery] = useState(searchParams.get('q') ?? '');
   const [category, setCategory] = useState<Category>(initialCategory);
   const [nearbyPlaces, setNearbyPlaces] = useState<Place[]>([]);
@@ -102,8 +103,6 @@ export function MapPageScreen({ places }: { places: Place[] }) {
   const [routeOpen, setRouteOpen] = useState(false);
   // 길찾기 화면이 뜨면 이 화면의 검색·목록은 물러난다.
   const [routeView, setRouteView] = useState(false);
-  // 검색을 누른 뒤에는 관련도 1위를 지도 카드에 올린다.
-  const selectTopAfterSearch = useRef(false);
 
   const allPlaces = useMemo(() => Array.from(
     new Map([...kakaoPlaces, ...nearbyPlaces, ...places].map(place => [place.contentId, place as MapPlace])).values()
@@ -113,7 +112,8 @@ export function MapPageScreen({ places }: { places: Place[] }) {
     const q = query.trim().toLowerCase();
     return matchesCategory && (!q || [place.name, place.description, place.address, ...place.tags].join(' ').toLowerCase().includes(q));
   }), query), [allPlaces, query, category]);
-  const selected = visible.find(place => place.contentId === selectedId) ?? visible[0];
+  const selected = visible.find(place => place.contentId === selectedId);
+  const hasSelection = Boolean(selected);
 
   const searchKakao = useCallback(async (
     bounds?: MapBounds,
@@ -131,7 +131,6 @@ export function MapPageScreen({ places }: { places: Place[] }) {
       params.set('east', String(bounds.east));
     }
 
-    if (keyword) selectTopAfterSearch.current = true;
     setKakaoLoading(true);
     setKakaoError('');
     try {
@@ -145,10 +144,8 @@ export function MapPageScreen({ places }: { places: Place[] }) {
       // heritage/nature/festival layer. Keep only provider-classified matches.
       const next = (payload.data?.places ?? []).map(toMapPlace)
         .filter(place => nextCategory === 'all' || place.category === nextCategory);
+      // 결과는 목록으로 보여 주고, 카드는 사용자가 고른 장소에만 띄운다.
       setKakaoPlaces(next);
-      // With a keyword the list is ranked by relevance, so let that ranking pick
-      // the selection instead of pinning the first Kakao business.
-      if (next[0] && !keyword) setSelectedId(next[0].contentId);
     } catch (error) {
       setKakaoError(error instanceof Error ? error.message : messages.map.kakaoSearchFailed);
     } finally {
@@ -156,11 +153,6 @@ export function MapPageScreen({ places }: { places: Place[] }) {
     }
   }, [category, messages.map.kakaoSearchFailed, query]);
 
-  useEffect(() => {
-    if (!selectTopAfterSearch.current || !visible.length) return;
-    selectTopAfterSearch.current = false;
-    setSelectedId(visible[0].contentId);
-  }, [visible]);
 
   const chooseCategory = useCallback((next: Category) => {
     setCategory(next);
@@ -188,6 +180,7 @@ export function MapPageScreen({ places }: { places: Place[] }) {
           routeOpen={routeOpen}
           onCloseRoute={() => { setRouteOpen(false); setSheet('half'); }}
           onRouteViewChange={setRouteView}
+          onDismissPlace={() => setSelectedId('')}
           onSelect={place => setSelectedId(place.contentId)}
           onNearbyPlaces={next => {
             setNearbyPlaces(next);
@@ -241,7 +234,7 @@ export function MapPageScreen({ places }: { places: Place[] }) {
         </div>
       </div>}
 
-      {!routeView && <div
+      {!routeView && !hasSelection && <div
         style={{ height: sheetHeight }}
         className="absolute inset-x-0 bottom-0 z-30 flex flex-col rounded-t-[22px] bg-[#faf8f4] shadow-[0_-8px_28px_rgba(18,55,47,.16)] transition-[height] duration-200 motion-reduce:transition-none"
       >
