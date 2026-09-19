@@ -30,6 +30,7 @@ vi.mock('@/frontend/i18n/locale-context', () => ({
         fare: '요금 {fare}원', toll: '통행료 {fare}원', durationHours: '{h}시간 {m}분',
         durationMinutes: '{m}분', estimateTag: '직선 예상', routeSteps: '경로 안내', noRoute: '경로 없음',
         zoomIn: '지도 확대', zoomOut: '지도 축소',
+        outsideServiceArea: '지금 위치가 경주 밖이라 현재 위치를 출발지로 쓸 수 없어요.',
         arriveBy: '{time} 도착 예정', stepOnMap: '{step}번 지점 지도에서 보기'
       }
     }
@@ -317,5 +318,19 @@ describe('KakaoMapExplorer route state', () => {
     expect(map.setLevel).toHaveBeenCalledWith(4, { animate: true });
     expect(map.setLevel).toHaveBeenCalledWith(6, { animate: true });
     expect(screen.getByRole('button', { name: '현재 위치' })).toBeVisible();
+  });
+
+  it('refuses a location outside Gyeongju instead of routing from another city', async () => {
+    installKakaoMock();
+    vi.mocked(readLocationConsent).mockResolvedValue(true);
+    // 서울 양천구: 여행자가 아직 경주에 도착하지 않은 상태
+    installGeolocation(() => ({ latitude: 37.5266, longitude: 126.8562 }));
+    render(<KakaoMapExplorer places={[firstPlace]} selectedPlace={firstPlace} onSelect={vi.fn()} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: '현재 위치' }));
+
+    expect(await screen.findByText(/경주 밖이라/)).toBeVisible();
+    // 주변 관광지도, 경로 비교도 요청하지 않는다.
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

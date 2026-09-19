@@ -28,6 +28,7 @@ import { MapPattern } from '@/frontend/components/common/ui';
 import { useLocale } from '@/frontend/i18n/locale-context';
 import { readLocationConsent, saveLocationConsent } from '@/frontend/location-consent';
 import { formatDistance } from '@/shared/format-distance';
+import { isInGyeongjuServiceArea } from '@/shared/service-area';
 import { loadKakaoMaps } from '@/frontend/kakao-sdk';
 
 type KakaoLatLng = object;
@@ -589,6 +590,14 @@ export function KakaoMapExplorer({
         lng: position.coords.longitude,
         accuracy: position.coords.accuracy
       };
+      // A traveler who has not arrived yet is somewhere else entirely. Using that
+      // position pulled the map to their home city and picked a place there as the
+      // destination, and every route then failed the service-area check.
+      if (!isInGyeongjuServiceArea(next)) {
+        locationTargetRef.current = null;
+        setLocationError(messages.map.outsideServiceArea);
+        return;
+      }
       setLocation(next);
       void loadNearby(next);
       const maps = window.kakao?.maps;
@@ -604,7 +613,7 @@ export function KakaoMapExplorer({
       timeout: 10000,
       maximumAge: 30000
     });
-  }, [consent, loadNearby, recordConsent]);
+  }, [consent, loadNearby, messages.map.outsideServiceArea, recordConsent]);
 
   // First-time visitors get their origin filled right after the consent dialog. Returning
   // visitors skipped the dialog and were left with no origin until they found the locate
