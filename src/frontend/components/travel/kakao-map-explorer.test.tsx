@@ -190,10 +190,13 @@ describe('KakaoMapExplorer route state', () => {
     expect(url.searchParams.get('destinationName')).toBe('첨성대');
 
     expect(await screen.findByRole('button', { name: /^도보\s*25분/ })).toBeVisible();
-    expect(screen.getByRole('button', { name: /^도보/ })).toHaveTextContent('1.0km');
     expect(screen.getByRole('button', { name: /^대중교통\s*1시간 10분/ })).toBeVisible();
     expect(screen.getByRole('button', { name: /^자전거\s*10분/ })).toBeVisible();
     expect(screen.getByRole('button', { name: /^자동차\s*5분/ })).toHaveAttribute('aria-pressed', 'true');
+
+    // 거리는 탭이 아니라 아래 요약 줄에 있다.
+    fireEvent.click(screen.getByRole('button', { name: /^도보/ }));
+    expect(await screen.findByText(/1\.0km/)).toBeVisible();
 
     fireEvent.click(screen.getByRole('button', { name: /대중교통/ }));
     expect(await screen.findByText(/환승 1회 · 요금 1,450원/)).toBeVisible();

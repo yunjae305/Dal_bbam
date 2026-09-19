@@ -100,6 +100,8 @@ export function MapPageScreen({ places }: { places: Place[] }) {
   const [kakaoError, setKakaoError] = useState('');
   const [sheet, setSheet] = useState<'peek' | 'half' | 'full'>('half');
   const [routeOpen, setRouteOpen] = useState(false);
+  // 길찾기 화면이 뜨면 이 화면의 검색·목록은 물러난다.
+  const [routeView, setRouteView] = useState(false);
   // 검색을 누른 뒤에는 관련도 1위를 지도 카드에 올린다.
   const selectTopAfterSearch = useRef(false);
 
@@ -185,6 +187,7 @@ export function MapPageScreen({ places }: { places: Place[] }) {
           bottomOffset={sheetHeight}
           routeOpen={routeOpen}
           onCloseRoute={() => { setRouteOpen(false); setSheet('half'); }}
+          onRouteViewChange={setRouteView}
           onSelect={place => setSelectedId(place.contentId)}
           onNearbyPlaces={next => {
             setNearbyPlaces(next);
@@ -196,7 +199,7 @@ export function MapPageScreen({ places }: { places: Place[] }) {
         />
       </div>
 
-      <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex flex-col gap-2 px-3 pt-3">
+      {!routeView && <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex flex-col gap-2 px-3 pt-3">
         <form
           className="pointer-events-auto flex h-12 items-center gap-2 rounded-2xl bg-white px-4 shadow-[0_6px_20px_rgba(18,55,47,.18)]"
           onSubmit={event => {
@@ -236,9 +239,9 @@ export function MapPageScreen({ places }: { places: Place[] }) {
             </button>
           ))}
         </div>
-      </div>
+      </div>}
 
-      <div
+      {!routeView && <div
         style={{ height: sheetHeight }}
         className="absolute inset-x-0 bottom-0 z-30 flex flex-col rounded-t-[22px] bg-[#faf8f4] shadow-[0_-8px_28px_rgba(18,55,47,.16)] transition-[height] duration-200 motion-reduce:transition-none"
       >
@@ -283,7 +286,7 @@ export function MapPageScreen({ places }: { places: Place[] }) {
           ))}
           {!visible.length && <p className="py-6 text-center text-[10px] text-[#76807d]">{messages.common.empty}</p>}
         </div>
-      </div>
+      </div>}
     </section>
   );
 }

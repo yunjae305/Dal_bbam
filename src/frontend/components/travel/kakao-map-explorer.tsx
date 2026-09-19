@@ -165,7 +165,8 @@ export function KakaoMapExplorer({
   searchAreaLoading = false,
   bottomOffset = 84,
   routeOpen = false,
-  onCloseRoute
+  onCloseRoute,
+  onRouteViewChange
 }: {
   places: MapPlace[];
   selectedPlace?: MapPlace;
@@ -179,6 +180,8 @@ export function KakaoMapExplorer({
   /** The route card is a mode of its own, like the map app's 길찾기 button. */
   routeOpen?: boolean;
   onCloseRoute?: () => void;
+  /** Lets the page hide its own search and list while the route screen is up. */
+  onRouteViewChange?: (open: boolean) => void;
 }) {
   const { locale, messages } = useLocale();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -738,6 +741,10 @@ export function KakaoMapExplorer({
     durationMinutes: messages.map.durationMinutes
   };
   const routeView = routeOpen || routeIntent;
+  useEffect(() => {
+    onRouteViewChange?.(routeView);
+  }, [onRouteViewChange, routeView]);
+
   const showRoutePanel = routeView && Boolean(selectedPlace || origin || destination);
   const showPlaceCard = !routeView && Boolean(selectedPlace);
   const estimated = directions ? isFallbackDirection(directions) : false;
@@ -759,7 +766,8 @@ export function KakaoMapExplorer({
       : ''
   ].filter(Boolean) : [];
 
-  const endpointChip = (endpoint: RouteEndpoint, point: RoutePoint | null) => {
+  // 카카오맵처럼 출발·도착을 위아래 한 줄씩 놓는다. 누르면 그 지점을 고르는 중이 된다.
+  const endpointRow = (endpoint: RouteEndpoint, point: RoutePoint | null) => {
     const active = picking === endpoint;
     const label = endpoint === 'origin' ? messages.map.origin : messages.map.destination;
     const pickLabel = endpoint === 'origin' ? messages.map.pickOrigin : messages.map.pickDestination;
@@ -769,9 +777,9 @@ export function KakaoMapExplorer({
         aria-label={pickLabel}
         aria-pressed={active}
         onClick={() => { setRouteIntent(true); setPicking(current => current === endpoint ? null : endpoint); }}
-        className={`flex min-h-9 min-w-0 items-center gap-1.5 rounded-full px-2.5 py-1.5 text-left text-[9px] font-black ${active ? 'bg-[#2f7567] text-white' : 'bg-[#eef3ee] text-[#1f2a27]'}`}
+        className={`flex min-h-10 w-full min-w-0 items-center gap-2 rounded-xl px-3 text-left text-[11px] font-black ${active ? 'bg-[#2f7567] text-white' : 'bg-[#f4f5f6] text-[#25211d]'}`}
       >
-        <span className={`shrink-0 ${active ? 'text-white/80' : 'text-[#2f7567]'}`}>{label}</span>
+        <span className={`shrink-0 text-[10px] ${active ? 'text-white/80' : 'text-[#2f7567]'}`}>{label}</span>
         <span className="truncate">{point?.name ?? messages.map.notSet}</span>
       </button>
     );
@@ -806,7 +814,7 @@ export function KakaoMapExplorer({
       )}
 
       {consent === null && (
-        <div className="absolute inset-x-4 top-16 z-50 rounded-2xl bg-white p-4 shadow-xl ring-1 ring-black/10">
+        <div className="absolute inset-x-4 top-1/2 z-50 -translate-y-1/2 rounded-2xl bg-white p-4 shadow-xl ring-1 ring-black/10">
           <button
             type="button"
             aria-label={messages.common.close}
@@ -903,155 +911,143 @@ export function KakaoMapExplorer({
       )}
 
       {showRoutePanel && (
-        <div ref={routePanelRef} style={{ bottom: bottomOffset + 12 }}
-          className="absolute left-3 right-3 z-40 max-h-[calc(100%-120px)] overflow-y-auto rounded-2xl bg-white/97 p-3 shadow-xl backdrop-blur">
-          <div className="flex items-center justify-between gap-2">
-            <p className="text-[11px] font-black text-[#2f7567]">{messages.map.directions}</p>
-            <button
-              type="button"
-              aria-label={messages.common.close}
-              onClick={() => { setOrigin(null); setDestination(null); setPicking(null); setRouteIntent(false); clearComparison(); setLocationError(''); onCloseRoute?.(); }}
-              className="grid h-8 w-8 place-items-center rounded-full bg-[#f1f2f4] text-[#5d6a65]"
-            >
-              <X size={14} />
-            </button>
-          </div>
-
-          {selectedPlace && (
-            <div className="mt-1 flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <p className="truncate text-sm font-black">{selectedPlace.name}</p>
-                <p className="truncate text-[10px] text-[#68716e]">{selectedPlace.address}</p>
+        <>
+          <div className="absolute inset-x-3 top-3 z-40 rounded-2xl bg-white p-2.5 shadow-[0_8px_24px_rgba(18,55,47,.18)]">
+            <div className="flex items-center gap-2">
+              <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+                {endpointRow('origin', origin)}
+                {endpointRow('destination', destination)}
               </div>
-              {selectedPlace.kakaoPlaceUrl ? (
-                <a href={selectedPlace.kakaoPlaceUrl} target="_blank" rel="noreferrer" aria-label={messages.map.kakaoDetail} className="shrink-0 text-[#2f7567]">
-                  <ExternalLink size={20} />
-                </a>
-              ) : <MapPin size={22} className="shrink-0 text-[#b94f4a]" />}
-            </div>
-          )}
-
-          <div className="mt-2 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-1.5">
-            {endpointChip('origin', origin)}
-            <button
-              type="button"
-              onClick={swapEndpoints}
-              disabled={!origin && !destination}
-              aria-label={messages.map.swap}
-              className="grid h-8 w-8 place-items-center rounded-full bg-white text-[#2f7567] shadow-sm ring-1 ring-black/5 disabled:opacity-40"
-            >
-              <ArrowUpDown size={14} />
-            </button>
-            {endpointChip('destination', destination)}
-          </div>
-
-          {picking && (
-            <div className="mt-2 flex items-center justify-between gap-2 rounded-xl bg-[#fff7df] px-3 py-2 text-[9px] font-bold text-[#866d2f]" role="status">
-              <span className="min-w-0 leading-4">{messages.map.pickHint}</span>
-              <div className="flex shrink-0 items-center gap-1">
-                <button type="button" onClick={() => applyCurrentLocationTo(picking)} className="inline-flex items-center gap-1 rounded-full bg-white px-2.5 py-1.5 font-black text-[#2f7567]">
-                  <Crosshair size={11} /> {messages.map.useCurrentLocation}
-                </button>
-                <button type="button" onClick={() => setPicking(null)} className="rounded-full px-2 py-1.5 font-black text-[#866d2f]">
-                  {messages.map.cancel}
-                </button>
-              </div>
-            </div>
-          )}
-
-          {origin && destination && <div className="mt-2 grid grid-cols-4 gap-1.5">
-            {directionModes.map(mode => {
-              const result = resultsByMode.get(mode);
-              const active = activeMode === mode;
-              return (
+              <div className="flex shrink-0 flex-col gap-1.5">
                 <button
-                  key={mode}
                   type="button"
-                  aria-pressed={active}
-                  onClick={() => chooseMode(mode)}
-                  className={`flex min-h-11 flex-col items-center justify-center rounded-xl px-1 py-1.5 text-[9px] font-black ${active ? 'bg-[#b94f4a] text-white' : 'bg-[#eef3ee]'}`}
+                  onClick={swapEndpoints}
+                  disabled={!origin && !destination}
+                  aria-label={messages.map.swap}
+                  className="grid h-9 w-9 place-items-center rounded-full bg-[#eef3ee] text-[#2f7567] disabled:opacity-40"
                 >
-                  <span>{modeLabels[mode]}</span>
-                  <span className={`mt-0.5 text-[10px] tabular-nums ${active ? 'text-white' : 'text-[#2f7567]'}`}>
-                    {result
-                      ? isFallbackDirection(result) ? messages.map.noRoute : formatRouteDuration(result.durationSeconds, durationTemplates)
-                      : routeLoading ? '…' : '—'}
-                  </span>
-                  {result && <span className="mt-0.5 text-[10px] tabular-nums">
-                    {isFallbackDirection(result) ? `${messages.map.estimateTag} ` : ''}{formatDistance(result.distanceMeters)}
-                  </span>}
+                  <ArrowUpDown size={15} />
                 </button>
-              );
-            })}
-          </div>}
+                <button
+                  type="button"
+                  aria-label={messages.common.close}
+                  onClick={() => { setOrigin(null); setDestination(null); setPicking(null); setRouteIntent(false); clearComparison(); setLocationError(''); onCloseRoute?.(); }}
+                  className="grid h-9 w-9 place-items-center rounded-full bg-[#f1f2f4] text-[#5d6a65]"
+                >
+                  <X size={15} />
+                </button>
+              </div>
+            </div>
 
-          {routeLoading && (
-            <p className="mt-2 inline-flex items-center gap-1 text-[9px] font-bold text-[#68716e]" role="status">
-              <RotateCw className="animate-spin" size={11} /> {messages.map.routeComparing}
-            </p>
-          )}
-          {(routeError || comparison?.results.some(isFallbackDirection)) && !routeLoading && (
-            <button type="button" onClick={() => void compareRoutes()} className="mt-2 inline-flex min-h-8 items-center gap-1 rounded-full bg-[#eef3ee] px-3 py-1.5 text-[10px] font-bold text-[#2f7567]">
-              <RotateCw size={14} /> {messages.common.retry}
-            </button>
-          )}
+            {picking && (
+              <div className="mt-2 flex items-center justify-between gap-2 rounded-xl bg-[#fff7df] px-3 py-2 text-[9px] font-bold text-[#866d2f]">
+                <span className="min-w-0 leading-4">{messages.map.pickHint}</span>
+                <div className="flex shrink-0 items-center gap-1">
+                  <button type="button" onClick={() => applyCurrentLocationTo(picking)} className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-1.5 font-black text-[#2f7567]">
+                    <Crosshair size={11} /> {messages.map.useCurrentLocation}
+                  </button>
+                  <button type="button" onClick={() => setPicking(null)} className="rounded-full px-2 py-1.5 font-black text-[#866d2f]">
+                    {messages.map.cancel}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
 
-          {directions && (
-            <div className="mt-2 flex items-center justify-between gap-3 text-[10px]">
-              <span className="min-w-0 text-pretty leading-5">{summaryParts.join(' · ')}</span>
-              <div className="flex shrink-0 items-center gap-2">
-                {directions.steps && directions.steps.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => setStepsOpen(value => !value)}
-                    aria-expanded={stepsOpen}
-                    className="inline-flex items-center gap-0.5 font-black text-[#68716e]"
-                  >
-                    {messages.map.routeSteps} {stepsOpen ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+          <div className="absolute inset-x-0 bottom-0 z-40 max-h-[58%] overflow-y-auto rounded-t-[22px] bg-white px-4 pb-5 pt-3 shadow-[0_-8px_28px_rgba(18,55,47,.18)]">
+            {!(origin && destination) ? (
+              <p className="py-4 text-center text-[11px] font-bold leading-5 text-[#68716e]">{messages.map.selectBoth}</p>
+            ) : (
+              <>
+                <div className="grid grid-cols-4 gap-1.5">
+                  {directionModes.map(mode => {
+                    const result = resultsByMode.get(mode);
+                    const active = activeMode === mode;
+                    return (
+                      <button
+                        key={mode}
+                        type="button"
+                        aria-pressed={active}
+                        onClick={() => chooseMode(mode)}
+                        className={`flex min-h-14 flex-col items-center justify-center gap-0.5 rounded-xl px-1 text-[10px] font-black ${active ? 'bg-[#b94f4a] text-white' : 'bg-[#f4f5f6] text-[#25211d]'}`}
+                      >
+                        <span>{modeLabels[mode]}</span>
+                        <span className={`text-[11px] tabular-nums ${active ? 'text-white' : 'text-[#2f7567]'}`}>
+                          {result
+                            ? isFallbackDirection(result) ? messages.map.noRoute : formatRouteDuration(result.durationSeconds, durationTemplates)
+                            : '–'}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {routeLoading && (
+                  <p className="mt-3 inline-flex items-center gap-1 text-[10px] font-bold text-[#68716e]" role="status">
+                    <RotateCw className="animate-spin" size={12} /> {messages.map.routeComparing}
+                  </p>
+                )}
+
+                {directions && (
+                  <div className="mt-3 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                    <p className="text-[13px] font-black leading-5">{summaryParts.join(' · ')}</p>
+                    <div className="flex shrink-0 items-center gap-2 text-[10px]">
+                      {directions.steps && directions.steps.length > 0 && (
+                        <button type="button" onClick={() => setStepsOpen(open => !open)} aria-expanded={stepsOpen} className="inline-flex items-center gap-0.5 font-black text-[#2f7567]">
+                          {messages.map.routeSteps} {stepsOpen ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                        </button>
+                      )}
+                      <a className="inline-flex items-center gap-1 font-black text-[#2f7567]" href={directions.appUrl ?? directions.externalUrl} target="_blank" rel="noreferrer">
+                        <Navigation size={12} /> {messages.map.openApp}
+                      </a>
+                      <a className="font-bold text-[#68716e]" href={directions.webFallbackUrl ?? directions.externalUrl} target="_blank" rel="noreferrer">
+                        {messages.map.openWeb}
+                      </a>
+                    </div>
+                  </div>
+                )}
+
+                {(routeError || comparison?.results.some(isFallbackDirection)) && !routeLoading && (
+                  <button type="button" onClick={() => void compareRoutes()} className="mt-2 inline-flex min-h-8 items-center gap-1 rounded-full bg-[#eef3ee] px-3 py-1.5 text-[10px] font-bold text-[#2f7567]">
+                    <RotateCw size={13} /> {messages.common.retry}
                   </button>
                 )}
-                <button type="button" onClick={openKakaoMapApp} className="inline-flex items-center gap-1 font-black text-[#2f7567]">
-                  <Navigation size={12} /> {messages.map.openApp}
-                </button>
-                <a className="font-bold text-[#68716e]" href={directions.webFallbackUrl ?? directions.externalUrl} target="_blank" rel="noreferrer">
-                  {messages.map.openWeb}
-                </a>
-              </div>
-            </div>
-          )}
 
-          {directions && stepsOpen && directions.steps && directions.steps.length > 0 && (
-            <ol className="mt-2 max-h-28 space-y-1 overflow-y-auto rounded-xl bg-[#f7f4ef] px-3 py-2 text-[9px] leading-4 text-[#4f5754]">
-              {directions.steps.map((step, index) => (
-                <li key={`${index}-${step.guidance}`}>
-                  <button
-                    type="button"
-                    disabled={!step.coordinates}
-                    onClick={() => {
-                      const maps = window.kakao?.maps;
-                      const map = mapRef.current;
-                      if (!maps || !map || !step.coordinates) return;
-                      map.setLevel(Math.min(map.getLevel(), 4), { animate: true });
-                      map.panTo(new maps.LatLng(step.coordinates[0], step.coordinates[1]));
-                    }}
-                    aria-label={messages.map.stepOnMap.replace('{step}', String(index + 1))}
-                    className="flex w-full gap-2 text-left disabled:cursor-default"
-                  >
-                    <span className="shrink-0 font-black text-[#2f7567]">{index + 1}</span>
-                    <span className="min-w-0 flex-1">{step.guidance}</span>
-                    {typeof step.durationSeconds === 'number' && step.durationSeconds > 0 && (
-                      <span className="shrink-0 tabular-nums text-[#8a918e]">{formatRouteDuration(step.durationSeconds, durationTemplates)}</span>
-                    )}
-                  </button>
-                </li>
-              ))}
-            </ol>
-          )}
+                {directions && stepsOpen && directions.steps && directions.steps.length > 0 && (
+                  <ol className="mt-3 space-y-1.5 rounded-xl bg-[#f7f4ef] px-3 py-2.5 text-[10px] leading-4 text-[#4f5754]">
+                    {directions.steps.map((step, index) => (
+                      <li key={`${index}-${step.guidance}`}>
+                        <button
+                          type="button"
+                          disabled={!step.coordinates}
+                          onClick={() => {
+                            const maps = window.kakao?.maps;
+                            const map = mapRef.current;
+                            if (!maps || !map || !step.coordinates) return;
+                            map.setLevel(Math.min(map.getLevel(), 4), { animate: true });
+                            map.panTo(new maps.LatLng(step.coordinates[0], step.coordinates[1]));
+                          }}
+                          aria-label={messages.map.stepOnMap.replace('{step}', String(index + 1))}
+                          className="flex w-full gap-2 text-left disabled:cursor-default"
+                        >
+                          <span className="shrink-0 font-black text-[#2f7567]">{index + 1}</span>
+                          <span className="min-w-0 flex-1">{step.guidance}</span>
+                          {typeof step.durationSeconds === 'number' && step.durationSeconds > 0 && (
+                            <span className="shrink-0 tabular-nums text-[#8a918e]">{formatRouteDuration(step.durationSeconds, durationTemplates)}</span>
+                          )}
+                        </button>
+                      </li>
+                    ))}
+                  </ol>
+                )}
 
-          {(routeError || directions?.disclaimer || directions?.pathSource === 'straight-line') && (
-            <p className="mt-2 text-xs leading-5 text-[#a04c48]" role="status">{routeError || (estimated ? messages.map.routeUnavailable : messages.map.pathUnavailable)}</p>
-          )}
-        </div>
+                {(routeError || directions?.disclaimer || directions?.pathSource === 'straight-line') && (
+                  <p className="mt-2 text-[11px] leading-5 text-[#a04c48]" role="status">{routeError || (estimated ? messages.map.walkingEstimate : directions?.disclaimer)}</p>
+                )}
+              </>
+            )}
+          </div>
+        </>
       )}
     </div>
   );
