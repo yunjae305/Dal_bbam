@@ -102,13 +102,20 @@ describe('read-only launch database readiness', () => {
 
   it('rejects empty or invalid non-null video sources and counts only validated references', async () => {
     const invalid = [{ video_url: '' }, { video_url: 'javascript:alert(1)' }, { video_url: 'https://video.example/not-video.html' }, { youtube_video_id: 'invalid' }];
-    const failed = await inspectDatabaseReadiness({ ...config, fetcher: fixture({ overrides: { '/rest/v1/shorts': Response.json(invalid) } }) });
+    const failed = await inspectDatabaseReadiness({ ...config, shortsEnabled: true, fetcher: fixture({ overrides: { '/rest/v1/shorts': Response.json(invalid) } }) });
     expect(failed.content.errors.publishedVideos).toBe('NO_VALID_VIDEO_SOURCE_IN_SAMPLE');
     expect(failed.content).toMatchObject({ publishedVideos: 0, videoSourceRowsChecked: 4 });
     expect(failed.ready).toBe(false);
-    const passed = await inspectDatabaseReadiness({ ...config, fetcher: fixture({ overrides: { '/rest/v1/shorts': Response.json([...invalid, { youtube_video_id: 'abcdefghijk' }]) } }) });
+    const passed = await inspectDatabaseReadiness({ ...config, shortsEnabled: true, fetcher: fixture({ overrides: { '/rest/v1/shorts': Response.json([...invalid, { youtube_video_id: 'abcdefghijk' }]) } }) });
     expect(passed.content).toMatchObject({ publishedVideos: 1, videoSourceRowsChecked: 5 });
     expect(passed.ready).toBe(true);
+  });
+
+  it('stays ready without published videos while the shorts feed is switched off', async () => {
+    const result = await inspectDatabaseReadiness({ ...config, fetcher: fixture({ overrides: { '/rest/v1/shorts': Response.json([]) } }) });
+    expect(result.content).toMatchObject({ publishedVideos: 0 });
+    expect(result.content.errors.publishedVideos).toBeUndefined();
+    expect(result).toMatchObject({ ready: true, contentReady: true });
   });
 
   it('bounds all requests by one deadline and returns only sanitized failure codes', async () => {

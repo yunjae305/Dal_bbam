@@ -13,6 +13,7 @@ import {
 } from '@/frontend/components/travel/kakao-map-explorer';
 import { useLocale } from '@/frontend/i18n/locale-context';
 import { exploreMessages } from '@/shared/explore-messages';
+import { sortPlacesByRelevance } from '@/shared/place-search';
 
 type KakaoPlaceResult = {
   id: string;
@@ -91,11 +92,11 @@ export function MapPageScreen({ places }: { places: Place[] }) {
   const allPlaces = useMemo(() => Array.from(
     new Map([...kakaoPlaces, ...nearbyPlaces, ...places].map(place => [place.contentId, place as MapPlace])).values()
   ), [kakaoPlaces, nearbyPlaces, places]);
-  const visible = useMemo(() => allPlaces.filter(place => {
+  const visible = useMemo(() => sortPlacesByRelevance(allPlaces.filter(place => {
     const matchesCategory = category === 'all' || place.category === category;
     const q = query.trim().toLowerCase();
     return matchesCategory && (!q || [place.name, place.description, place.address, ...place.tags].join(' ').toLowerCase().includes(q));
-  }), [allPlaces, query, category]);
+  }), query), [allPlaces, query, category]);
   const selected = visible.find(place => place.contentId === selectedId) ?? visible[0];
 
   const searchKakao = useCallback(async (
@@ -128,7 +129,9 @@ export function MapPageScreen({ places }: { places: Place[] }) {
       const next = (payload.data?.places ?? []).map(toMapPlace)
         .filter(place => nextCategory === 'all' || place.category === nextCategory);
       setKakaoPlaces(next);
-      if (next[0]) setSelectedId(next[0].contentId);
+      // With a keyword the list is ranked by relevance, so let that ranking pick
+      // the selection instead of pinning the first Kakao business.
+      if (next[0] && !keyword) setSelectedId(next[0].contentId);
     } catch (error) {
       setKakaoError(error instanceof Error ? error.message : messages.map.kakaoSearchFailed);
     } finally {

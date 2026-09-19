@@ -1,6 +1,23 @@
 # 달밤 웹/PWA 배포 준비
 
-2026-09-06 현재 **공개 배포 준비 미완료**다. 기능 코드와 로컬 테스트의 통과, 실제 운영 설정·DB 저장·콘텐츠·HTTPS 검증을 구분한다. 현재 배포 대상은 기존 `vercel.json`에 정의된 Next.js 서버 앱이며 정적 HTML 내보내기로 대체할 수 없다. Android 도구는 테스트용 TWA APK이며 스토어 출시 도구가 아니다.
+**2026-09-19 기준: 운영 배포 완료 — https://dal-bbam.vercel.app.** 아래 2026-09-06 표는 그때의 미완료
+항목을 남겨 둔 기록이고, 현재 상태는 바로 아래 표를 본다. 배포 대상은 `vercel.json`의 Next.js 서버 앱이며
+정적 HTML 내보내기로 대체할 수 없다. Android 도구는 테스트용 TWA APK이며 스토어 출시 도구가 아니다.
+
+## 현재 상태 (2026-09-19)
+
+| 항목 | 상태 |
+|---|---|
+| 운영 배포 | Vercel 프로젝트 `dal-bbam`, GitHub main 푸시 시 자동 배포. 빌드 명령 `npm run build:release`는 출시 점검을 통과해야 빌드한다 |
+| 출시 점검 | 운영 환경변수 18개 등록 완료. 배포된 `/api/health`의 `configuration.release.ready = true`, 준비 상태 전 항목 true |
+| DB·저장소·콘텐츠 | 관광지 545건, 활성 스탬프 대상 9곳, 버킷 정상 |
+| 로그인 | 이메일 로그인 실동작 확인. 카카오·구글은 각 로그인 화면 진입까지 확인, 실제 왕복은 사용자 계정 필요 |
+| 지도 | **카카오 콘솔에 운영 도메인 미등록 → 운영에서 지도 SDK가 401 `domain mismatched`**. 콘솔 등록만 하면 해결되고 재배포는 불필요 |
+| 구글 로그인 복귀 | Supabase Auth Redirect URLs에 `https://dal-bbam.vercel.app/**` 추가 필요 |
+| 쇼츠 | 사용자 결정으로 영상 피드는 감춤(`FEATURE_SHORTS` 미설정). 영상 등록 후 `true`로 켠다 |
+| AI | `FEATURE_AI=false`. 규칙 기반 추천과 기본 해설로 동작 |
+
+## 2026-09-06 시점 기록
 
 ## 현재 남은 항목
 
@@ -28,6 +45,7 @@
 - `PUBLIC_OPERATOR_NAME`, `PRIVACY_CONTACT_EMAIL`, `LOCATION_TERMS_EFFECTIVE_DATE`: 실제 운영 정보.
 - `JWT_SECRET`, `CRON_SECRET`: 예시값이 아닌 32자 이상의 무작위 서버 비밀키. Vercel 정기 작업은 설정된 `CRON_SECRET`을 Authorization 헤더로 전달한다. [Vercel 정기 작업 문서](https://vercel.com/docs/cron-jobs/manage-cron-jobs)
 - `DEMO_MODE_ENABLED=false`, `DEMO_ISOLATED_TEST=false`: 공개 배포에서는 반드시 비활성화한다.
+- `FEATURE_SHORTS=true`: 쇼츠 영상 피드를 여는 스위치. 넣지 않으면 사용자 화면에 "추후 추가 예정" 안내가 보이고, 출시 점검도 게시된 영상을 요구하지 않는다.
 - `FEATURE_AI=true|false`: 명시적인 초기 운영 결정. `true`는 OpenAI 키와 모델 접근이 필요하며 실제 생성·음성 품질 검증도 별도로 진행한다. Claude 구독 로그인 연결은 현재 앱에 구현하지 않았다.
 
 Vercel은 Preview와 Production의 환경변수를 구분한다. 대상 환경에 실제 값을 설정한 후 빌드해야 하며 브라우저용 `NEXT_PUBLIC_*` 값은 빌드에 반영된다. `.vercelignore`는 로컬 환경 파일, 테스트 결과, 비공개 초안·Android 테스트 키/산출물을 배포 업로드에서 제외한다. [Vercel 환경 구분](https://vercel.com/docs/deployments/environments), [환경변수 문서](https://vercel.com/docs/environment-variables)

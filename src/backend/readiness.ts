@@ -2,7 +2,7 @@ import { getSupabaseEnv } from '@/backend/supabase/env';
 import { fetchWithTimeout } from '@/backend/fetch-timeout';
 import { getGyeongjuTourPlaces, TourApiError } from '@/backend/tour-api';
 import { inspectDatabaseReadiness } from '@/backend/database-readiness';
-import { isFeatureEnabled } from '@/backend/features';
+import { isFeatureEnabled, isShortsFeedEnabled } from '@/backend/features';
 
 export type ProviderReadiness = {
   configured: boolean;
@@ -54,7 +54,7 @@ export async function checkDatabase(): Promise<ProviderReadiness> {
   if (databasePending?.key === key) return databasePending.task;
   const task = (async (): Promise<ProviderReadiness> => {
     try {
-      const checked = await inspectDatabaseReadiness({ url: env.url!, secret: env.secretKey!, aiEnabled, communityEnabled });
+      const checked = await inspectDatabaseReadiness({ url: env.url!, secret: env.secretKey!, aiEnabled, communityEnabled, shortsEnabled: isShortsFeedEnabled() });
       return {
         ...result(true, startedAt, checked.ready, checked.ready ? undefined : checked.reachable ? 'misconfigured' : 'unreachable'),
         reachable: checked.reachable, schemaReady: checked.schemaReady, storageReady: checked.storageReady, contentReady: checked.contentReady

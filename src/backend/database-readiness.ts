@@ -62,6 +62,8 @@ export type DatabaseReadinessReport = {
 
 export type DatabaseReadinessOptions = {
   url: string; secret: string; aiEnabled: boolean; communityEnabled: boolean;
+  /** The shorts feed is optional: with it off, a launch without videos still counts as ready. */
+  shortsEnabled?: boolean;
   fetcher?: typeof fetch; timeoutMs?: number;
 };
 
@@ -166,11 +168,16 @@ export async function inspectDatabaseReadiness(options: DatabaseReadinessOptions
     if (result.error) content.errors[name] = result.error;
     else if (result.value === 0) content.errors[name] = 'CONTENT_EMPTY';
   }
-  if (videos.error) content.errors.publishedVideos = videos.error;
-  else if (!Array.isArray(videos.value)) content.errors.publishedVideos = 'VIDEO_SOURCES_UNVERIFIED';
-  else if (content.publishedVideos === 0) content.errors.publishedVideos = 'NO_VALID_VIDEO_SOURCE_IN_SAMPLE';
+  // With the feed switched off the count is reported but never blocks a launch.
+  if (options.shortsEnabled) {
+    if (videos.error) content.errors.publishedVideos = videos.error;
+    else if (!Array.isArray(videos.value)) content.errors.publishedVideos = 'VIDEO_SOURCES_UNVERIFIED';
+    else if (content.publishedVideos === 0) content.errors.publishedVideos = 'NO_VALID_VIDEO_SOURCE_IN_SAMPLE';
+  }
+  const requiredCounts = [content.places, content.activeStampTargets,
+    ...(options.shortsEnabled ? [content.publishedVideos] : [])];
   const contentReady = Object.keys(content.errors).length === 0 &&
-    [content.places, content.activeStampTargets, content.publishedVideos].every(count => typeof count === 'number' && count > 0);
+    requiredCounts.every(count => typeof count === 'number' && count > 0);
   const storageReady = Object.values(storage.buckets).every(bucket => bucket.ready);
   return {
     reachable: metadataProbe.status === 200 || typeof places.value === 'number',

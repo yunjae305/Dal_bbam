@@ -3,9 +3,11 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ShortsScreen } from '@/frontend/components/travel/shorts-screen';
-import type { ShortItem } from '@/shared/types';
+import type { Lang, ShortItem } from '@/shared/types';
+import { uiMessages } from '@/shared/ui-messages';
 
 const mocks = vi.hoisted(() => ({
+  locale: 'ko' as Lang,
   player: vi.fn((props: { item: { id: string }; active: boolean; autoPlay: boolean }) => {
     void props;
     return null;
@@ -18,7 +20,7 @@ vi.mock('@/frontend/components/travel/short-video-player', () => ({
 vi.mock('@/frontend/components/travel/visitor-stories', () => ({ VisitorStories: () => null }));
 vi.mock('@/frontend/i18n/locale-context', () => ({
   useLocale: () => ({
-    locale: 'ko',
+    locale: mocks.locale,
     messages: {
       common: { all: '전체', save: '저장', share: '공유' },
       ai: { pause: '해설 멈춤', listen: '해설 듣기', disclosure: 'AI 해설' }
@@ -76,7 +78,7 @@ describe('ShortsScreen viewport playback', () => {
   });
 
   it('activates only the most visible card and enables autoplay', async () => {
-    render(<ShortsScreen />);
+    render(<ShortsScreen feedEnabled />);
     await screen.findByText('쇼츠 2');
     await waitFor(() => expect(notifyIntersection).toBeTypeOf('function'));
 
@@ -99,7 +101,7 @@ describe('ShortsScreen viewport playback', () => {
 
   it('retains every available tag after applying a filter', async () => {
     vi.mocked(fetch).mockResolvedValue({ ok: true, json: async () => ({ data: [items[0]], meta: { tags: ['야경', '역사'] } }) } as Response);
-    render(<ShortsScreen />);
+    render(<ShortsScreen feedEnabled />);
     fireEvent.click(await screen.findByRole('button', { name: '#역사' }));
     await waitFor(() => expect(fetch).toHaveBeenLastCalledWith(expect.stringContaining('tag='), expect.anything()));
     expect(await screen.findByRole('button', { name: '#역사' })).toHaveAttribute('aria-pressed', 'true');
@@ -109,7 +111,7 @@ describe('ShortsScreen viewport playback', () => {
   it('plays finished MP4 and YouTube stories without offering generated narration', async () => {
     const videoItems = [items[0], { ...items[1], videoUrl: undefined, youtubeVideoId: 'dQw4w9WgXcQ' }];
     vi.mocked(fetch).mockResolvedValue({ ok: true, json: async () => ({ data: videoItems }) } as Response);
-    render(<ShortsScreen />);
+    render(<ShortsScreen feedEnabled />);
     await screen.findByText('쇼츠 2');
     expect(screen.queryByRole('button', { name: '해설 듣기' })).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: '쇼츠 1 · 장소 정보 보기' })).toHaveAttribute('href', '/places/place-0');
@@ -129,7 +131,7 @@ describe('ShortsScreen viewport playback', () => {
     vi.mocked(fetch).mockResolvedValue({ ok: true, json: async () => ({
       data: [{ ...items[0], videoUrl: undefined }, { ...items[1], audioUrl: '/audio/recorded-introduction.mp3' }]
     }) } as Response);
-    render(<ShortsScreen />);
+    render(<ShortsScreen feedEnabled />);
     await screen.findByText('쇼츠 2');
     const controls = screen.getAllByRole('button', { name: '해설 듣기' });
     expect(controls).toHaveLength(2);
@@ -143,7 +145,7 @@ describe('ShortsScreen viewport playback', () => {
     vi.mocked(fetch)
       .mockResolvedValueOnce({ ok: true, json: async () => ({ data: [items[0]], meta: { nextOffset: 10 } }) } as Response)
       .mockResolvedValueOnce({ ok: true, json: async () => ({ data: items, meta: { nextOffset: null } }) } as Response);
-    render(<ShortsScreen />);
+    render(<ShortsScreen feedEnabled />);
     fireEvent.click(await screen.findByRole('button', { name: '쇼츠 더 보기' }));
     await screen.findByText('쇼츠 2');
     expect(screen.getAllByText('쇼츠 1')).toHaveLength(1);
@@ -156,12 +158,20 @@ describe('ShortsScreen viewport playback', () => {
       .mockResolvedValueOnce({ ok: true, json: async () => ({ data: [items[0]], meta: { nextOffset: 10 } }) } as Response)
       .mockRejectedValueOnce(new Error('offline'))
       .mockResolvedValueOnce({ ok: true, json: async () => ({ data: [items[1]], meta: { nextOffset: null } }) } as Response);
-    render(<ShortsScreen />);
+    render(<ShortsScreen feedEnabled />);
     fireEvent.click(await screen.findByRole('button', { name: '쇼츠 더 보기' }));
     await screen.findByRole('alert');
     expect(screen.getByText('쇼츠 1')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '쇼츠 더 보기' }));
     await screen.findByText('쇼츠 2');
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it.each(['ko', 'en', 'ja', 'zh'] as const)('shows the coming-soon notice instead of requesting a feed in %s', async locale => {
+    mocks.locale = locale;
+    render(<ShortsScreen />);
+    expect(await screen.findByText(uiMessages[locale].shorts.comingSoon)).toBeInTheDocument();
+    expect(fetch).not.toHaveBeenCalled();
+    mocks.locale = 'ko';
   });
 });

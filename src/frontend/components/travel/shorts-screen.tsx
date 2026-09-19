@@ -34,7 +34,8 @@ function usePageVisible() {
   return visible;
 }
 
-export function ShortsScreen() {
+/** `feedEnabled` comes from FEATURE_SHORTS: the video feed stays hidden until real videos exist. */
+export function ShortsScreen({ feedEnabled = false }: { feedEnabled?: boolean }) {
   const { locale, messages } = useLocale();
   const ui = uiMessages[locale].shorts;
   const [items, setItems] = useState<ShortItem[]>([]);
@@ -61,6 +62,7 @@ export function ShortsScreen() {
   const activeItemId = items.some(item => item.id === activeId) ? activeId : items[0]?.id ?? '';
 
   useEffect(() => {
+    if (!feedEnabled) return;
     const controller = new AbortController();
     const version = ++requestVersion.current;
 
@@ -96,7 +98,7 @@ export function ShortsScreen() {
       moreController.current = null;
       audioRef.current?.pause();
     };
-  }, [locale, activeTag, requestKey, ui.loadFailed]);
+  }, [feedEnabled, locale, activeTag, requestKey, ui.loadFailed]);
 
   // A shared link is /shorts#<id>; the cards render after the fetch, so scroll once they exist.
   useEffect(() => {
@@ -260,17 +262,24 @@ export function ShortsScreen() {
       <header className="sticky top-0 z-20 bg-[#151719] px-5 pb-3 pt-5">
         <h1 className="text-balance text-xl font-black">{ui.title}</h1>
         <p className="mt-1 text-pretty text-xs leading-5 text-white/65">{ui.introduction}</p>
-        <div className="mt-3 flex gap-2 overflow-x-auto" aria-label={ui.filters}>
+        {feedEnabled && <div className="mt-3 flex gap-2 overflow-x-auto" aria-label={ui.filters}>
           <TagButton active={!activeTag} onClick={() => setActiveTag('')}>{messages.common.all}</TagButton>
           {tags.map(tag => (
             <TagButton key={tag} active={activeTag === tag} onClick={() => setActiveTag(tag)}>#{tag}</TagButton>
           ))}
-        </div>
+        </div>}
       </header>
       <VisitorStories />
 
       {visibleError && <p className="mx-5 mb-3 rounded-xl bg-red-950/70 p-3 text-pretty text-[10px]" role="alert">{visibleError}</p>}
-      {loading ? (
+      {!feedEnabled ? (
+        <div className="px-5 pb-24 pt-2">
+          <div className="rounded-3xl bg-white/5 p-6 text-center outline outline-1 -outline-offset-1 outline-white/10" role="status">
+            <p className="text-balance text-sm font-black">{ui.comingSoon}</p>
+            <p className="mt-2 text-pretty text-[12px] leading-5 text-white/65">{ui.comingSoonDetail}</p>
+          </div>
+        </div>
+      ) : loading ? (
         <div className="grid min-h-[60dvh] place-items-center" role="status" aria-label={ui.loading}>
           <LoaderCircle className="animate-spin motion-reduce:animate-none" />
         </div>

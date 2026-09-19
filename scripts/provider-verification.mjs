@@ -1,12 +1,15 @@
 // Read-only provider checks shared by the CLI and its tests. Never log response
 // bodies, credentials, private records, or external request URLs.
 import { inspectDatabaseReadiness } from '../src/backend/database-readiness.ts';
+import { verifyKakaoRoutes } from './kakao-route-verification.mjs';
 
 export async function verifyProviders({ env = process.env, fetcher = fetch } = {}) {
   const providers = {};
   const enabled = value => value === undefined || !['false', '0', 'off'].includes(value.trim().toLowerCase());
   const aiEnabled = enabled(env.FEATURE_AI);
   const communityEnabled = enabled(env.FEATURE_COMMUNITY);
+  // Opt-in, unlike the flags above: no FEATURE_SHORTS means the feed is still hidden.
+  const shortsEnabled = ['1', 'true', 'on'].includes(env.FEATURE_SHORTS?.trim().toLowerCase() ?? '');
   function safeCode(error) {
     const value = [error?.code, error?.cause?.code, error?.name]
       .find(candidate => typeof candidate === 'string' && /^[A-Za-z0-9_]{1,80}$/.test(candidate));
@@ -32,7 +35,7 @@ export async function verifyProviders({ env = process.env, fetcher = fetch } = {
     probe('database', env.NEXT_PUBLIC_SUPABASE_URL?.trim() && env.SUPABASE_SECRET_KEY?.trim(), async () => {
       const details = await inspectDatabaseReadiness({
         url: env.NEXT_PUBLIC_SUPABASE_URL, secret: env.SUPABASE_SECRET_KEY,
-        aiEnabled, communityEnabled, fetcher
+        aiEnabled, communityEnabled, shortsEnabled, fetcher
       });
       return {
         ...details, operational: details.ready, places: details.content.places,
@@ -51,6 +54,8 @@ export async function verifyProviders({ env = process.env, fetcher = fetch } = {
     }),
     probe('kakao', env.KAKAO_REST_API_KEY?.trim(), async () => {
       await request('https://dapi.kakao.com/v2/local/search/keyword.json?query=%EA%B2%BD%EC%A3%BC&size=1', { Authorization: `KakaoAK ${env.KAKAO_REST_API_KEY}` });
+      const directions = await verifyKakaoRoutes({ key: env.KAKAO_REST_API_KEY, fetcher });
+      return { directions, operational: Object.values(directions).every(route => route.operational) };
     }),
     ...(aiEnabled ? [probe('openai', env.OPENAI_API_KEY?.trim(), async () => {
       await request(`https://api.openai.com/v1/models/${encodeURIComponent(env.OPENAI_TEXT_MODEL || 'gpt-5.6-terra')}`, { Authorization: `Bearer ${env.OPENAI_API_KEY}` });
