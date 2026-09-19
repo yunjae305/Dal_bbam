@@ -71,8 +71,10 @@ DB·화면 검증을 구분해 적는다.
    401 `domain mismatched`를 반환한다. 콘솔 등록만으로 해결되며 재배포는 필요 없다. 카카오 로그인
    Redirect URI(`https://dal-bbam.vercel.app/api/auth/kakao/callback`)도 같이 등록한다.
 2. **Supabase Auth Redirect URLs**에 `https://dal-bbam.vercel.app/**` 추가 — 구글 로그인 복귀 경로.
-3. **관광지 이름·주소의 다국어 데이터.** UI는 4개 언어로 전환되지만 관광지 540건 중 영어 이름이 있는 행은
-   4건뿐이다(일본어·중국어 3건). 외국인 사용자에게는 목록과 지도에 한국어 이름이 그대로 보인다.
-   TourAPI 다국어 서비스로 채워야 하며, 540건×언어 호출이라 개발 키 일일 한도를 고려해 나눠 받아야 한다.
+3. **관광지 이름의 다국어 데이터.** UI는 4개 언어로 전환되지만 `place_translations`에는 영어 1행뿐이라
+   목록과 지도에 한국어 이름이 그대로 보인다. 원인은 호출량이 아니라 권한이다 — **TourAPI 키가 국문
+   서비스(KorService2)에만 등록돼 있어** 영문·일문·중문 서비스가 403 `SERVICE_KEY_IS_NOT_REGISTERED_ERROR`를
+   돌려준다. 공공데이터포털에서 해당 서비스를 활용신청해 승인되면 같은 키로 동작하고,
+   `scripts/sync-place-translations.mjs --apply`가 목록 조회(언어당 수십 회)로 이름을 채운다.
 4. **쇼츠 영상 등록 후 `FEATURE_SHORTS=true`** 설정.
 5. 실기기(안드로이드 실물·iOS Safari) 설치와 재생, 동시 접속 100명(NFR-PERF-004)은 이번 범위에서 확인하지 않았다.
