@@ -1,4 +1,7 @@
 import { NextRequest } from 'next/server';
+
+// The AI call plus route timings can outrun the default serverless limit.
+export const maxDuration = 30;
 import {
   apiData,
   apiError,

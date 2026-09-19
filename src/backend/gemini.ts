@@ -6,7 +6,9 @@
  */
 const DEFAULT_TEXT_MODEL = 'gemini-3.1-flash-lite';
 const ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models';
-const DEFAULT_TIMEOUT_MS = 8000;
+// Generating a Korean course with reasons takes longer on a cold serverless start
+// than it does locally; 8s cut the model off and every route fell back to the rules.
+const DEFAULT_TIMEOUT_MS = 16_000;
 
 type JsonSchema = Record<string, unknown>;
 export type GeminiUsage = { input_tokens?: number; output_tokens?: number; total_tokens?: number };
@@ -33,7 +35,7 @@ export function geminiTextModel(): string {
 
 function timeoutMs(): number {
   const configured = Number(process.env.GEMINI_REQUEST_TIMEOUT_MS);
-  return Number.isFinite(configured) ? Math.min(20_000, Math.max(1_000, configured)) : DEFAULT_TIMEOUT_MS;
+  return Number.isFinite(configured) ? Math.min(25_000, Math.max(1_000, configured)) : DEFAULT_TIMEOUT_MS;
 }
 
 /**
