@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { MapPin, Navigation, RotateCw, Search } from 'lucide-react';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Category, Place, PlaceCategory } from '@/shared/types';
 import { placeCategories } from '@/shared/types';
 import {
@@ -100,6 +100,8 @@ export function MapPageScreen({ places }: { places: Place[] }) {
   const [kakaoError, setKakaoError] = useState('');
   const [sheet, setSheet] = useState<'peek' | 'half' | 'full'>('half');
   const [routeOpen, setRouteOpen] = useState(false);
+  // 검색을 누른 뒤에는 관련도 1위를 지도 카드에 올린다.
+  const selectTopAfterSearch = useRef(false);
 
   const allPlaces = useMemo(() => Array.from(
     new Map([...kakaoPlaces, ...nearbyPlaces, ...places].map(place => [place.contentId, place as MapPlace])).values()
@@ -127,6 +129,7 @@ export function MapPageScreen({ places }: { places: Place[] }) {
       params.set('east', String(bounds.east));
     }
 
+    if (keyword) selectTopAfterSearch.current = true;
     setKakaoLoading(true);
     setKakaoError('');
     try {
@@ -150,6 +153,12 @@ export function MapPageScreen({ places }: { places: Place[] }) {
       setKakaoLoading(false);
     }
   }, [category, messages.map.kakaoSearchFailed, query]);
+
+  useEffect(() => {
+    if (!selectTopAfterSearch.current || !visible.length) return;
+    selectTopAfterSearch.current = false;
+    setSelectedId(visible[0].contentId);
+  }, [visible]);
 
   const chooseCategory = useCallback((next: Category) => {
     setCategory(next);
@@ -175,6 +184,7 @@ export function MapPageScreen({ places }: { places: Place[] }) {
           selectedPlace={selected}
           bottomOffset={sheetHeight}
           routeOpen={routeOpen}
+          onCloseRoute={() => { setRouteOpen(false); setSheet('half'); }}
           onSelect={place => setSelectedId(place.contentId)}
           onNearbyPlaces={next => {
             setNearbyPlaces(next);

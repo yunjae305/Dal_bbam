@@ -164,7 +164,8 @@ export function KakaoMapExplorer({
   onSearchArea,
   searchAreaLoading = false,
   bottomOffset = 84,
-  routeOpen = true
+  routeOpen = false,
+  onCloseRoute
 }: {
   places: MapPlace[];
   selectedPlace?: MapPlace;
@@ -177,6 +178,7 @@ export function KakaoMapExplorer({
   bottomOffset?: number;
   /** The route card is a mode of its own, like the map app's 길찾기 button. */
   routeOpen?: boolean;
+  onCloseRoute?: () => void;
 }) {
   const { locale, messages } = useLocale();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -205,6 +207,8 @@ export function KakaoMapExplorer({
   const [origin, setOrigin] = useState<RoutePoint | null>(null);
   const [destination, setDestination] = useState<RoutePoint | null>(null);
   const [picking, setPicking] = useState<RouteEndpoint | null>(null);
+  // GPS가 조용히 채운 출발지만으로는 길찾기 화면을 열지 않는다. 사용자가 직접 고른 경우만 연다.
+  const [routeIntent, setRouteIntent] = useState(false);
   const [comparison, setComparison] = useState<DirectionComparison | null>(null);
   // When the routes arrived, so the arrival time is computed from data rather than during render.
   const [routeFetchedAt, setRouteFetchedAt] = useState(0);
@@ -256,6 +260,7 @@ export function KakaoMapExplorer({
     if (endpoint === 'origin') setOrigin(point);
     else setDestination(point);
     setPicking(null);
+    setRouteIntent(true);
     setLocationError('');
   }, []);
 
@@ -375,17 +380,13 @@ export function KakaoMapExplorer({
     map.panTo(new maps.LatLng(selectedPlace.coordinates[0], selectedPlace.coordinates[1]));
   }, [mapGeneration, selectedPlace]);
 
-  // The selected place feeds whichever endpoint is being picked; by default it is the destination.
+  // Picking a place only fills an endpoint while the traveler is choosing one.
+  // Otherwise the place card asks whether it is the start or the destination.
   useEffect(() => {
     if (!selectedPlace) return;
     if (lastSelectedIdRef.current === selectedPlace.contentId) return;
     lastSelectedIdRef.current = selectedPlace.contentId;
-    const point = placePoint(selectedPlace);
-    if (pickingRef.current === 'origin') {
-      assignEndpoint('origin', point);
-    } else {
-      assignEndpoint('destination', point);
-    }
+    if (pickingRef.current) assignEndpoint(pickingRef.current, placePoint(selectedPlace));
   }, [assignEndpoint, selectedPlace]);
 
   // A fresh GPS fix becomes the origin unless the user explicitly asked for it elsewhere.
@@ -736,7 +737,9 @@ export function KakaoMapExplorer({
     durationHours: messages.map.durationHours,
     durationMinutes: messages.map.durationMinutes
   };
-  const showRoutePanel = routeOpen && Boolean(selectedPlace || origin || destination);
+  const routeView = routeOpen || routeIntent;
+  const showRoutePanel = routeView && Boolean(selectedPlace || origin || destination);
+  const showPlaceCard = !routeView && Boolean(selectedPlace);
   const estimated = directions ? isFallbackDirection(directions) : false;
   // A map app tells you when you would arrive, not just how long it takes.
   const arrivalLabel = directions && routeFetchedAt && !estimated && directions.durationSeconds > 0
@@ -765,7 +768,7 @@ export function KakaoMapExplorer({
         type="button"
         aria-label={pickLabel}
         aria-pressed={active}
-        onClick={() => setPicking(current => current === endpoint ? null : endpoint)}
+        onClick={() => { setRouteIntent(true); setPicking(current => current === endpoint ? null : endpoint); }}
         className={`flex min-h-9 min-w-0 items-center gap-1.5 rounded-full px-2.5 py-1.5 text-left text-[9px] font-black ${active ? 'bg-[#2f7567] text-white' : 'bg-[#eef3ee] text-[#1f2a27]'}`}
       >
         <span className={`shrink-0 ${active ? 'text-white/80' : 'text-[#2f7567]'}`}>{label}</span>
@@ -857,11 +860,65 @@ export function KakaoMapExplorer({
         )}
       </div>
 
+      {locationError && (
+        <div className="pointer-events-none absolute inset-x-3 top-[110px] z-40 flex justify-center">
+          <p role="status" className="pointer-events-auto max-w-full rounded-2xl bg-white/97 px-4 py-2.5 text-[11px] font-bold leading-4 text-[#a04c48] shadow-lg">
+            {locationError}
+          </p>
+        </div>
+      )}
+
+      {showPlaceCard && selectedPlace && (
+        <div style={{ bottom: bottomOffset + 12 }} className="absolute left-3 right-3 z-40 rounded-2xl bg-white/97 p-3 shadow-xl backdrop-blur">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="truncate text-sm font-black">{selectedPlace.name}</p>
+              <p className="truncate text-[10px] text-[#68716e]">{selectedPlace.address}</p>
+            </div>
+            {selectedPlace.kakaoPlaceUrl ? (
+              <a href={selectedPlace.kakaoPlaceUrl} target="_blank" rel="noreferrer" aria-label={messages.map.kakaoDetail} className="shrink-0 text-[#2f7567]">
+                <ExternalLink size={18} />
+              </a>
+            ) : <MapPin size={20} className="shrink-0 text-[#b94f4a]" />}
+          </div>
+          <div className="mt-2.5 grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => assignEndpoint('origin', placePoint(selectedPlace))}
+              aria-label={messages.map.pickOrigin}
+              className="inline-flex min-h-10 items-center justify-center gap-1 rounded-xl bg-[#eef3ee] text-[11px] font-black text-[#2f7567]"
+            >
+              <Navigation size={13} /> {messages.map.origin}
+            </button>
+            <button
+              type="button"
+              onClick={() => assignEndpoint('destination', placePoint(selectedPlace))}
+              aria-label={messages.map.pickDestination}
+              className="inline-flex min-h-10 items-center justify-center gap-1 rounded-xl bg-[#b94f4a] text-[11px] font-black text-white"
+            >
+              <MapPin size={13} /> {messages.map.destination}
+            </button>
+          </div>
+        </div>
+      )}
+
       {showRoutePanel && (
         <div ref={routePanelRef} style={{ bottom: bottomOffset + 12 }}
           className="absolute left-3 right-3 z-40 max-h-[calc(100%-120px)] overflow-y-auto rounded-2xl bg-white/97 p-3 shadow-xl backdrop-blur">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-[11px] font-black text-[#2f7567]">{messages.map.directions}</p>
+            <button
+              type="button"
+              aria-label={messages.common.close}
+              onClick={() => { setOrigin(null); setDestination(null); setPicking(null); setRouteIntent(false); clearComparison(); setLocationError(''); onCloseRoute?.(); }}
+              className="grid h-8 w-8 place-items-center rounded-full bg-[#f1f2f4] text-[#5d6a65]"
+            >
+              <X size={14} />
+            </button>
+          </div>
+
           {selectedPlace && (
-            <div className="flex items-center justify-between gap-3">
+            <div className="mt-1 flex items-center justify-between gap-3">
               <div className="min-w-0">
                 <p className="truncate text-sm font-black">{selectedPlace.name}</p>
                 <p className="truncate text-[10px] text-[#68716e]">{selectedPlace.address}</p>
@@ -900,12 +957,6 @@ export function KakaoMapExplorer({
                 </button>
               </div>
             </div>
-          )}
-
-          {!(origin && destination) && (
-            <p className="mt-2 rounded-xl bg-[#eef3ee] px-3 py-2 text-[10px] font-bold leading-4 text-[#2f7567]">
-              {messages.map.selectBoth}
-            </p>
           )}
 
           {origin && destination && <div className="mt-2 grid grid-cols-4 gap-1.5">
@@ -997,8 +1048,8 @@ export function KakaoMapExplorer({
             </ol>
           )}
 
-          {(locationError || routeError || directions?.disclaimer || directions?.pathSource === 'straight-line') && (
-            <p className="mt-2 text-xs leading-5 text-[#a04c48]" role="status">{locationError || routeError || (estimated ? messages.map.routeUnavailable : messages.map.pathUnavailable)}</p>
+          {(routeError || directions?.disclaimer || directions?.pathSource === 'straight-line') && (
+            <p className="mt-2 text-xs leading-5 text-[#a04c48]" role="status">{routeError || (estimated ? messages.map.routeUnavailable : messages.map.pathUnavailable)}</p>
           )}
         </div>
       )}

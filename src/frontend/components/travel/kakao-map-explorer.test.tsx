@@ -166,8 +166,8 @@ describe('KakaoMapExplorer route state', () => {
     vi.mocked(readLocationConsent).mockResolvedValue(false);
     render(<KakaoMapExplorer places={[firstPlace]} selectedPlace={firstPlace} onSelect={vi.fn()} />);
 
-    // 출발지가 없으면 이동수단을 아예 제시하지 않는다. 임의의 출발지를 끼워 넣지 않는다.
-    expect(await screen.findByText('출발지와 도착지를 모두 선택해 주세요.')).toBeVisible();
+    // 장소를 골라도 출발·도착을 정하기 전에는 경로를 계산하지 않는다.
+    expect(await screen.findByRole('button', { name: '도착지 선택' })).toBeVisible();
     expect(screen.queryByRole('button', { name: /^도보/ })).not.toBeInTheDocument();
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -179,6 +179,7 @@ describe('KakaoMapExplorer route state', () => {
     fetchMock.mockResolvedValue({ ok: true, json: async () => comparisonPayload() });
 
     render(<KakaoMapExplorer places={[firstPlace]} selectedPlace={firstPlace} onSelect={vi.fn()} />);
+    fireEvent.click(await screen.findByRole('button', { name: '도착지 선택' }));
     fireEvent.click(await screen.findByRole('button', { name: '현재 위치' }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
@@ -207,6 +208,7 @@ describe('KakaoMapExplorer route state', () => {
     fetchMock.mockResolvedValue({ ok: true, json: async () => comparisonPayload() });
 
     render(<KakaoMapExplorer places={[firstPlace]} selectedPlace={firstPlace} onSelect={vi.fn()} />);
+    fireEvent.click(await screen.findByRole('button', { name: '도착지 선택' }));
 
     // No tap on the locate button: the route request already carries the GPS origin.
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
@@ -236,7 +238,9 @@ describe('KakaoMapExplorer route state', () => {
     fetchMock.mockResolvedValue({ ok: true, json: async () => comparisonPayload() });
 
     render(<KakaoMapExplorer places={[firstPlace]} selectedPlace={firstPlace} onSelect={vi.fn()} />);
-    fireEvent.click(await screen.findByRole('button', { name: '출발지 선택' }));
+    // 장소 카드에서 도착지를 정하면 길찾기 화면으로 넘어간다.
+    fireEvent.click(await screen.findByRole('button', { name: '도착지 선택' }));
+    fireEvent.click(screen.getByRole('button', { name: '출발지 선택' }));
     expect(screen.getByText('지도를 탭하거나 장소를 선택하세요')).toBeVisible();
 
     const mapClick = kakao.listeners.find(entry => entry.target === kakao.map && entry.type === 'click');
@@ -266,6 +270,7 @@ describe('KakaoMapExplorer route state', () => {
     const view = render(
       <KakaoMapExplorer places={[firstPlace]} selectedPlace={firstPlace} onSelect={vi.fn()} />
     );
+    fireEvent.click(await screen.findByRole('button', { name: '도착지 선택' }));
     fireEvent.click(await screen.findByRole('button', { name: '현재 위치' }));
     await waitFor(() => expect(kakao.polylineInstances).toHaveLength(1));
     const carLine = kakao.polylineInstances[0];
@@ -281,11 +286,19 @@ describe('KakaoMapExplorer route state', () => {
     await waitFor(() => expect(kakao.polylineInstances).toHaveLength(3));
     const refreshedLine = kakao.polylineInstances[2];
 
+    // 다른 장소를 둘러봐도 이미 잡은 경로는 유지된다.
     view.rerender(
       <KakaoMapExplorer places={[secondPlace]} selectedPlace={secondPlace} onSelect={vi.fn()} />
     );
-    await waitFor(() => expect(refreshedLine.setMap).toHaveBeenCalledWith(null));
     await waitFor(() => expect(kakao.event.removeListener).toHaveBeenCalled());
+    expect(refreshedLine.setMap).not.toHaveBeenCalledWith(null);
+
+    // 도착지를 다시 고르는 중에 장소를 선택하면 그때 경로가 바뀐다.
+    fireEvent.click(screen.getByRole('button', { name: '도착지 선택' }));
+    view.rerender(
+      <KakaoMapExplorer places={[firstPlace]} selectedPlace={firstPlace} onSelect={vi.fn()} />
+    );
+    await waitFor(() => expect(refreshedLine.setMap).toHaveBeenCalledWith(null));
   });
 
   it('shows when the traveler would arrive and moves the map to a chosen turn', async () => {
@@ -295,6 +308,7 @@ describe('KakaoMapExplorer route state', () => {
     fetchMock.mockResolvedValue({ ok: true, json: async () => comparisonPayload() });
 
     render(<KakaoMapExplorer places={[firstPlace]} selectedPlace={firstPlace} onSelect={vi.fn()} />);
+    fireEvent.click(await screen.findByRole('button', { name: '도착지 선택' }));
     fireEvent.click(await screen.findByRole('button', { name: '현재 위치' }));
 
     // 자동차 5분 뒤 도착 시각이 함께 보인다.
