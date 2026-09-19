@@ -166,9 +166,9 @@ describe('KakaoMapExplorer route state', () => {
     vi.mocked(readLocationConsent).mockResolvedValue(false);
     render(<KakaoMapExplorer places={[firstPlace]} selectedPlace={firstPlace} onSelect={vi.fn()} />);
 
-    fireEvent.click(await screen.findByRole('button', { name: /^도보/ }));
-
-    expect(await screen.findByText('길찾기 전에 현재 위치를 확인해 주세요.')).toBeVisible();
+    // 출발지가 없으면 이동수단을 아예 제시하지 않는다. 임의의 출발지를 끼워 넣지 않는다.
+    expect(await screen.findByText('출발지와 도착지를 모두 선택해 주세요.')).toBeVisible();
+    expect(screen.queryByRole('button', { name: /^도보/ })).not.toBeInTheDocument();
     expect(fetchMock).not.toHaveBeenCalled();
   });
 

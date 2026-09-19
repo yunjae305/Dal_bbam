@@ -20,6 +20,7 @@ vi.mock('@/frontend/i18n/locale-context', () => ({
       map: {
         title: '경주 지도', nearbyLoading: '주변 검색 중', nearbyCount: '{count}곳',
         kakaoSearching: '카카오 검색 중', kakaoCount: '카카오 {count}곳',
+        toggleList: '장소 목록 펼치기·접기', listCount: '장소 {count}곳',
         kakaoSearchFailed: '검색 실패', kakaoSearch: '카카오 장소 검색',
         kakaoDetail: '카카오맵 상세'
       }

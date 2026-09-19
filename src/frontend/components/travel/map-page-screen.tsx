@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { MapPin, RotateCw, Search } from 'lucide-react';
+import { MapPin, Navigation, RotateCw, Search } from 'lucide-react';
 import { useCallback, useMemo, useState } from 'react';
 import type { Category, Place, PlaceCategory } from '@/shared/types';
 import { placeCategories } from '@/shared/types';
@@ -98,6 +98,8 @@ export function MapPageScreen({ places }: { places: Place[] }) {
   const [kakaoPlaces, setKakaoPlaces] = useState<MapPlace[]>([]);
   const [kakaoLoading, setKakaoLoading] = useState(false);
   const [kakaoError, setKakaoError] = useState('');
+  const [sheet, setSheet] = useState<'peek' | 'half' | 'full'>('half');
+  const [routeOpen, setRouteOpen] = useState(false);
 
   const allPlaces = useMemo(() => Array.from(
     new Map([...kakaoPlaces, ...nearbyPlaces, ...places].map(place => [place.contentId, place as MapPlace])).values()
@@ -155,52 +157,96 @@ export function MapPageScreen({ places }: { places: Place[] }) {
     void searchKakao(undefined, next);
   }, [searchKakao]);
 
+  // 카카오맵처럼 지도를 화면에 깔고, 목록은 끌어올리는 시트에 담는다.
+  const sheetHeights = { peek: 104, half: 380, full: 620 } as const;
+  const sheetHeight = Math.min(sheetHeights[sheet], typeof window === 'undefined' ? sheetHeights[sheet] : Math.round(window.innerHeight * 0.72));
+  const nextSheet = () => setSheet(current => (current === 'peek' ? 'half' : current === 'half' ? 'full' : 'peek'));
+  const statusLine = kakaoError
+    || (kakaoLoading ? messages.map.kakaoSearching : '')
+    || (nearbyLoading ? messages.map.nearbyLoading : '')
+    || (kakaoPlaces.length ? messages.map.kakaoCount.replace('{count}', String(kakaoPlaces.length)) : '')
+    || (nearbyPlaces.length ? messages.map.nearbyCount.replace('{count}', String(nearbyPlaces.length)) : '');
+
   return (
-    <section className="grid min-h-[calc(100dvh-112px)]">
-      <aside className="order-2 max-h-[45dvh] overflow-y-auto bg-[#faf8f4] p-4">
-        <h1 className="text-xl font-black">{messages.map.title}</h1>
-        {(nearbyLoading || nearbyPlaces.length > 0) && (
-          <p className="mt-2 rounded-lg bg-[#e8f2ed] px-3 py-2 text-[10px] font-bold text-[#2f7567]" role="status">
-            {nearbyLoading
-              ? messages.map.nearbyLoading
-              : messages.map.nearbyCount.replace('{count}', String(nearbyPlaces.length))}
-          </p>
-        )}
-        {(kakaoLoading || kakaoPlaces.length > 0 || kakaoError) && (
-          <p className={`mt-2 rounded-lg px-3 py-2 text-[10px] font-bold ${kakaoError ? 'bg-[#fff0eb] text-[#a04c48]' : 'bg-[#eef3ee] text-[#2f7567]'}`} role="status">
-            {kakaoError || (kakaoLoading
-              ? messages.map.kakaoSearching
-              : messages.map.kakaoCount.replace('{count}', String(kakaoPlaces.length)))}
-          </p>
-        )}
+    <section className="relative h-[calc(100dvh-112px)] overflow-hidden bg-[#e8f0e3]">
+      <div className="absolute inset-0">
+        <KakaoMapExplorer
+          places={visible}
+          selectedPlace={selected}
+          bottomOffset={sheetHeight}
+          routeOpen={routeOpen}
+          onSelect={place => setSelectedId(place.contentId)}
+          onNearbyPlaces={next => {
+            setNearbyPlaces(next);
+            if (next[0]) setSelectedId(next[0].contentId);
+          }}
+          onNearbyLoading={setNearbyLoading}
+          onSearchArea={bounds => searchKakao(bounds)}
+          searchAreaLoading={kakaoLoading}
+        />
+      </div>
+
+      <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex flex-col gap-2 px-3 pt-3">
         <form
-          className="mt-4 flex h-11 items-center gap-2 rounded-xl bg-white px-3 shadow-sm ring-1 ring-black/5"
+          className="pointer-events-auto flex h-12 items-center gap-2 rounded-2xl bg-white px-4 shadow-[0_6px_20px_rgba(18,55,47,.18)]"
           onSubmit={event => {
             event.preventDefault();
             void searchKakao();
           }}
         >
-          <Search size={16} />
+          <Search size={17} className="text-[#2f7567]" />
           <input
             value={query}
             onChange={event => setQuery(event.target.value)}
             placeholder={messages.common.searchPlaceholder}
             aria-label={messages.common.searchPlaceholder}
-            className="min-w-0 flex-1 bg-transparent text-[11px] outline-none"
+            className="min-w-0 flex-1 bg-transparent text-[12px] outline-none"
           />
-          <button type="submit" disabled={kakaoLoading} aria-label={messages.map.kakaoSearch} className="grid h-8 w-8 place-items-center rounded-full bg-[#2f7567] text-white disabled:opacity-60">
-            {kakaoLoading ? <RotateCw className="animate-spin" size={14} /> : <Search size={14} />}
+          <button type="submit" disabled={kakaoLoading} aria-label={messages.map.kakaoSearch} className="grid h-9 w-9 place-items-center rounded-full bg-[#2f7567] text-white disabled:opacity-60">
+            {kakaoLoading ? <RotateCw className="animate-spin" size={15} /> : <Search size={15} />}
           </button>
         </form>
-        <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
-          <button type="button" onClick={() => chooseCategory('all')} className={`shrink-0 rounded-full px-3 py-2 text-[9px] font-black ${category === 'all' ? 'bg-[#b94f4a] text-white' : 'bg-white'}`}>{messages.common.all}</button>
+
+        <div className="pointer-events-auto flex justify-end">
+          <button
+            type="button"
+            aria-pressed={routeOpen}
+            onClick={() => { setRouteOpen(open => !open); setSheet(open => (open === 'peek' ? 'half' : 'peek')); }}
+            className={`inline-flex h-9 items-center gap-1.5 rounded-full px-4 text-[11px] font-black shadow-[0_6px_16px_rgba(18,55,47,.18)] ${routeOpen ? 'bg-[#b94f4a] text-white' : 'bg-white text-[#2f7567]'}`}
+          >
+            <Navigation size={14} /> {messages.map.directions}
+          </button>
+        </div>
+
+        <div className="pointer-events-auto flex gap-2 overflow-x-auto pb-1">
+          <button type="button" onClick={() => chooseCategory('all')} className={`shrink-0 rounded-full px-3.5 py-2 text-[10px] font-black shadow-sm ${category === 'all' ? 'bg-[#b94f4a] text-white' : 'bg-white text-[#25211d]'}`}>{messages.common.all}</button>
           {placeCategories.map(item => (
-            <button key={item} type="button" onClick={() => chooseCategory(item)} className={`shrink-0 rounded-full px-3 py-2 text-[9px] font-black ${category === item ? 'bg-[#b94f4a] text-white' : 'bg-white'}`}>
+            <button key={item} type="button" onClick={() => chooseCategory(item)} className={`shrink-0 rounded-full px-3.5 py-2 text-[10px] font-black shadow-sm ${category === item ? 'bg-[#b94f4a] text-white' : 'bg-white text-[#25211d]'}`}>
               {messages.categories[item]}
             </button>
           ))}
         </div>
-        <div className="mt-4 space-y-2">
+      </div>
+
+      <div
+        style={{ height: sheetHeight }}
+        className="absolute inset-x-0 bottom-0 z-30 flex flex-col rounded-t-[22px] bg-[#faf8f4] shadow-[0_-8px_28px_rgba(18,55,47,.16)] transition-[height] duration-200 motion-reduce:transition-none"
+      >
+        <button
+          type="button"
+          onClick={nextSheet}
+          aria-label={messages.map.toggleList}
+          aria-expanded={sheet !== 'peek'}
+          className="flex shrink-0 flex-col items-center gap-1 px-4 pb-1 pt-2"
+        >
+          <span aria-hidden="true" className="h-1.5 w-12 rounded-full bg-[#d8d1c7]" />
+          <span className="flex w-full items-baseline justify-between">
+            <strong className="text-[13px] font-black">{messages.map.title}</strong>
+            <span className="text-[10px] font-bold text-[#6f7a75]">{statusLine || messages.map.listCount.replace('{count}', String(visible.length))}</span>
+          </span>
+        </button>
+
+        <div className="min-h-0 flex-1 space-y-2 overflow-y-auto px-4 pb-4">
           {visible.map(place => (
             <article key={place.contentId} className={`grid grid-cols-[72px_1fr] gap-3 rounded-xl p-2 ${selected?.contentId === place.contentId ? 'bg-[#fff0eb] ring-1 ring-[#b94f4a]/30' : 'bg-white'}`}>
               <button type="button" onClick={() => setSelectedId(place.contentId)} aria-label={ui.selectOnMap.replace('{name}', place.name)} className="text-left">
@@ -227,20 +273,6 @@ export function MapPageScreen({ places }: { places: Place[] }) {
           ))}
           {!visible.length && <p className="py-6 text-center text-[10px] text-[#76807d]">{messages.common.empty}</p>}
         </div>
-      </aside>
-      <div className="relative order-1 min-h-[55dvh]">
-        <KakaoMapExplorer
-          places={visible}
-          selectedPlace={selected}
-          onSelect={place => setSelectedId(place.contentId)}
-          onNearbyPlaces={next => {
-            setNearbyPlaces(next);
-            if (next[0]) setSelectedId(next[0].contentId);
-          }}
-          onNearbyLoading={setNearbyLoading}
-          onSearchArea={bounds => searchKakao(bounds)}
-          searchAreaLoading={kakaoLoading}
-        />
       </div>
     </section>
   );

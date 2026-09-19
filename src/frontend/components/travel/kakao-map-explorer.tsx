@@ -162,7 +162,9 @@ export function KakaoMapExplorer({
   onNearbyPlaces,
   onNearbyLoading,
   onSearchArea,
-  searchAreaLoading = false
+  searchAreaLoading = false,
+  bottomOffset = 84,
+  routeOpen = true
 }: {
   places: MapPlace[];
   selectedPlace?: MapPlace;
@@ -171,6 +173,10 @@ export function KakaoMapExplorer({
   onNearbyLoading?: (loading: boolean) => void;
   onSearchArea?: (bounds: MapBounds) => void | Promise<void>;
   searchAreaLoading?: boolean;
+  /** Height of the sheet covering the map, so floating UI sits above it. */
+  bottomOffset?: number;
+  /** The route card is a mode of its own, like the map app's 길찾기 button. */
+  routeOpen?: boolean;
 }) {
   const { locale, messages } = useLocale();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -203,6 +209,9 @@ export function KakaoMapExplorer({
   // When the routes arrived, so the arrival time is computed from data rather than during render.
   const [routeFetchedAt, setRouteFetchedAt] = useState(0);
   const [routeLoading, setRouteLoading] = useState(false);
+  // 컨트롤이 경로 카드에 가리지 않도록 카드 높이를 재서 그 위에 띄운다.
+  const routePanelRef = useRef<HTMLDivElement>(null);
+  const [routePanelHeight, setRoutePanelHeight] = useState(0);
   const [routeError, setRouteError] = useState('');
   const [activeMode, setActiveMode] = useState<DirectionMode | null>(null);
   const [stepsOpen, setStepsOpen] = useState(false);
@@ -531,6 +540,14 @@ export function KakaoMapExplorer({
     routeAbortRef.current?.abort();
   }, []);
 
+  useEffect(() => {
+    const panel = routePanelRef.current;
+    if (!panel || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(([entry]) => setRoutePanelHeight(Math.round(entry.contentRect.height)));
+    observer.observe(panel);
+    return () => observer.disconnect();
+  });
+
   const recordConsent = useCallback(async (granted: boolean) => {
     setConsent(granted);
     try {
@@ -719,7 +736,7 @@ export function KakaoMapExplorer({
     durationHours: messages.map.durationHours,
     durationMinutes: messages.map.durationMinutes
   };
-  const showRoutePanel = Boolean(selectedPlace || origin || destination);
+  const showRoutePanel = routeOpen && Boolean(selectedPlace || origin || destination);
   const estimated = directions ? isFallbackDirection(directions) : false;
   // A map app tells you when you would arrive, not just how long it takes.
   const arrivalLabel = directions && routeFetchedAt && !estimated && directions.durationSeconds > 0
@@ -763,7 +780,7 @@ export function KakaoMapExplorer({
       <div ref={containerRef} className={`h-full w-full ${mapAvailable ? '' : 'hidden'}`} aria-label={messages.map.title} />
 
       {!mapAvailable && (
-        <div className="absolute left-1/2 top-1/2 z-20 w-[min(320px,calc(100%-32px))] -translate-x-1/2 -translate-y-1/2 rounded-2xl bg-white/95 p-5 text-center shadow-xl ring-1 ring-black/10">
+        <div className="absolute left-1/2 top-1/2 z-40 w-[min(320px,calc(100%-32px))] -translate-x-1/2 -translate-y-1/2 rounded-2xl bg-white/95 p-5 text-center shadow-xl ring-1 ring-black/10">
           <MapPin className="mx-auto text-[#b94f4a]" size={26} />
           <p className="mt-2 text-sm font-black">{messages.map.unavailable}</p>
           <p className="mt-1 text-[10px] leading-4 text-[#68716e]">{mapError}</p>
@@ -778,7 +795,7 @@ export function KakaoMapExplorer({
           type="button"
           disabled={searchAreaLoading}
           onClick={searchCurrentArea}
-          className="absolute right-4 top-4 z-20 inline-flex h-9 items-center gap-1 rounded-full bg-white px-3 text-[10px] font-black text-[#2f7567] shadow-lg disabled:opacity-60"
+          className="absolute left-1/2 top-3 z-20 inline-flex h-9 -translate-x-1/2 items-center gap-1 whitespace-nowrap rounded-full bg-white px-3 text-[10px] font-black text-[#2f7567] shadow-lg disabled:opacity-60"
         >
           {searchAreaLoading ? <RotateCw className="animate-spin" size={13} /> : <Search size={13} />}
           {messages.map.searchArea}
@@ -786,7 +803,7 @@ export function KakaoMapExplorer({
       )}
 
       {consent === null && (
-        <div className="absolute inset-x-4 top-16 z-30 rounded-2xl bg-white p-4 shadow-xl ring-1 ring-black/10">
+        <div className="absolute inset-x-4 top-16 z-50 rounded-2xl bg-white p-4 shadow-xl ring-1 ring-black/10">
           <button
             type="button"
             aria-label={messages.common.close}
@@ -809,7 +826,7 @@ export function KakaoMapExplorer({
         </div>
       )}
 
-      <div className="absolute left-4 top-4 z-20 flex gap-2">
+      <div className="absolute right-3 top-[158px] z-20 flex flex-col gap-2">
         <button
           type="button"
           onClick={() => void requestLocation()}
@@ -841,7 +858,8 @@ export function KakaoMapExplorer({
       </div>
 
       {showRoutePanel && (
-        <div className="absolute bottom-[84px] left-4 right-4 z-20 max-h-[calc(100%-148px)] overflow-y-auto rounded-2xl bg-white/95 p-3 shadow-xl backdrop-blur">
+        <div ref={routePanelRef} style={{ bottom: bottomOffset + 12 }}
+          className="absolute left-3 right-3 z-40 max-h-[calc(100%-120px)] overflow-y-auto rounded-2xl bg-white/97 p-3 shadow-xl backdrop-blur">
           {selectedPlace && (
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0">
@@ -884,7 +902,13 @@ export function KakaoMapExplorer({
             </div>
           )}
 
-          <div className="mt-2 grid grid-cols-4 gap-1.5">
+          {!(origin && destination) && (
+            <p className="mt-2 rounded-xl bg-[#eef3ee] px-3 py-2 text-[10px] font-bold leading-4 text-[#2f7567]">
+              {messages.map.selectBoth}
+            </p>
+          )}
+
+          {origin && destination && <div className="mt-2 grid grid-cols-4 gap-1.5">
             {directionModes.map(mode => {
               const result = resultsByMode.get(mode);
               const active = activeMode === mode;
@@ -908,7 +932,7 @@ export function KakaoMapExplorer({
                 </button>
               );
             })}
-          </div>
+          </div>}
 
           {routeLoading && (
             <p className="mt-2 inline-flex items-center gap-1 text-[9px] font-bold text-[#68716e]" role="status">
@@ -916,7 +940,7 @@ export function KakaoMapExplorer({
             </p>
           )}
           {(routeError || comparison?.results.some(isFallbackDirection)) && !routeLoading && (
-            <button type="button" onClick={() => void compareRoutes()} className="mt-2 inline-flex min-h-11 items-center gap-1 rounded-xl px-3 text-xs font-bold text-[#2f7567]">
+            <button type="button" onClick={() => void compareRoutes()} className="mt-2 inline-flex min-h-8 items-center gap-1 rounded-full bg-[#eef3ee] px-3 py-1.5 text-[10px] font-bold text-[#2f7567]">
               <RotateCw size={14} /> {messages.common.retry}
             </button>
           )}
