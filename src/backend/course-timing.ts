@@ -1,7 +1,7 @@
 import { distanceMeters } from '@/backend/geo';
 import type { CourseRequest, CourseStop, TransportMode } from '@/shared/types';
 
-export type CourseLeg = { distanceMeters: number; travelMinutes: number; fromProvider: boolean; path?: [number, number][] };
+export type CourseLeg = { distanceMeters: number; travelMinutes: number; fromProvider: boolean; path?: [number, number][]; pathSource?: 'provider' | 'straight-line' };
 export const courseLegKey = (from: string, to: string) => `${from}:${to}`;
 export const validCourseStartTime = (value: unknown): value is string =>
   typeof value === 'string' && /^(0[6-9]|1[0-8]):[0-5]\d$/.test(value);
@@ -53,7 +53,9 @@ export function timeCourseStops(
       stops.push({
         ...next, order: stops.length, dayIndex,
         startTime: clockTime(arrival), endTime: clockTime(arrival + next.stayMinutes),
-        travelMinutes: leg.travelMinutes, distanceMeters: leg.distanceMeters, travelPath: leg.path
+        travelMinutes: leg.travelMinutes, distanceMeters: leg.distanceMeters, travelPath: leg.path,
+        travelSource: leg.fromProvider ? 'map-provider' : 'estimated',
+        travelPathSource: leg.pathSource ?? (leg.fromProvider ? 'provider' : 'straight-line')
       });
       if (previous) {
         if (leg.fromProvider) providerLegs += 1;

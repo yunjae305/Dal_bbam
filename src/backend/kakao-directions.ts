@@ -2,7 +2,8 @@ import {
   TimedCache
 } from '@/backend/kakao-map';
 
-import { type DirectionMode, type DirectionResult, type DirectionStep } from '@/shared/directions';
+import { validRouteMetric, type DirectionMode, type DirectionResult, type DirectionStep } from '@/shared/directions';
+import { isValidCoordinate } from '@/backend/geo';
 
 export type { DirectionMode, DirectionResult, DirectionStep };
 
@@ -63,6 +64,8 @@ type KakaoMapDirections = {
 
 const MAX_STEPS = 40;
 const directionsCache = new TimedCache<DirectionResult>(5 * 60_000, 300);
+const failedDirectionsCache = new TimedCache<DirectionResult>(15_000, 100);
+const pendingDirections = new Map<string, Promise<DirectionResult>>();
 function requestTimeoutMs(): number {
   const configured = Number(process.env.KAKAO_MAP_REQUEST_TIMEOUT_MS);
   return Number.isFinite(configured)
@@ -71,7 +74,7 @@ function requestTimeoutMs(): number {
 }
 
 function finiteOrUndefined(value: number | undefined): number | undefined {
-  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+  return validRouteMetric(value) ? value : undefined;
 }
 
 function routeLinks(mode: DirectionMode, endpoints: RouteEndpoints) {
@@ -98,8 +101,9 @@ function routeLinks(mode: DirectionMode, endpoints: RouteEndpoints) {
 
 function mapPath(points: number[][]): [number, number][] {
   return points.flatMap(point => {
+    if (!Array.isArray(point)) return [];
     const [lng, lat] = point;
-    return Number.isFinite(lat) && Number.isFinite(lng) ? [[lat, lng] as [number, number]] : [];
+    return isValidCoordinate(lat, lng) ? [[lat, lng] as [number, number]] : [];
   });
 }
 
@@ -139,9 +143,7 @@ function cacheKey(mode: DirectionMode, endpoints: RouteEndpoints) {
     origin.lat.toFixed(5),
     origin.lng.toFixed(5),
     destination.lat.toFixed(5),
-    destination.lng.toFixed(5),
-    endpoints.originName,
-    endpoints.destinationName
+    destination.lng.toFixed(5)
   ].join(':');
 }
 
@@ -165,14 +167,18 @@ async function loadKakaoMapDirections(
     signal: AbortSignal.timeout(requestTimeoutMs()),
     cache: 'no-store'
   });
-  if (!response.ok) return null;
+  if (!response.ok) throw new Error('Route provider unavailable');
 
   const payload = await response.json() as KakaoMapDirections;
-  if (payload.status !== 'OK') return null;
-  const route = mode === 'public' ? payload.routes?.[0] : payload.route;
+  if (['NO_RESULTS', 'STARTNODES_NULL', 'ENDNODES_NULL', 'EQUAL_POINTS', 'SAME_POINT', 'START_LINK_NOT_FOUND', 'END_LINK_NOT_FOUND', 'TOO_FAR_AWAY', 'ROUTE_RESULT_NOT_FOUND'].includes(payload.status ?? '')) return null;
+  if (payload.status !== 'OK') throw new Error('Invalid route response');
+  // The first transit option is not guaranteed to be the fastest usable route.
+  const route = mode === 'public' ? payload.routes
+    ?.filter(item => validRouteMetric(item.properties?.totalDistance) && validRouteMetric(item.properties?.totalTime))
+    .sort((a, b) => a.properties!.totalTime! - b.properties!.totalTime!)[0] : payload.route;
   const properties = route?.properties;
-  if (!route || !properties || !Number.isFinite(properties.totalDistance) || !Number.isFinite(properties.totalTime)) {
-    return null;
+  if (!route || !properties || !validRouteMetric(properties.totalDistance) || !validRouteMetric(properties.totalTime)) {
+    throw new Error('Invalid route metrics');
   }
 
   const summary = mode === 'public'
@@ -183,11 +189,13 @@ async function loadKakaoMapDirections(
     }
     : undefined;
 
+  const path = kakaoMapRoutePath(route);
   return {
     mode,
     distanceMeters: properties.totalDistance!,
     durationSeconds: properties.totalTime!,
-    path: ensurePath(kakaoMapRoutePath(route), endpoints),
+    path: ensurePath(path, endpoints),
+    pathSource: path.length >= 2 ? 'provider' : 'straight-line',
     ...routeLinks(mode, endpoints),
     source: `kakao-map-${mode}`,
     summary,
@@ -197,8 +205,7 @@ async function loadKakaoMapDirections(
 
 async function loadKakaoCarDirections(
   apiKey: string,
-  endpoints: RouteEndpoints,
-  straightDistance: number
+  endpoints: RouteEndpoints
 ): Promise<DirectionResult | null> {
   const { origin, destination } = endpoints;
   const url = new URL('https://apis-navi.kakaomobility.com/v1/directions');
@@ -211,11 +218,12 @@ async function loadKakaoCarDirections(
     signal: AbortSignal.timeout(requestTimeoutMs()),
     cache: 'no-store'
   });
-  if (!response.ok) return null;
+  if (!response.ok) throw new Error('Route provider unavailable');
 
   const payload = await response.json() as KakaoMobilityDirections;
   const route = payload.routes?.find(item => item.result_code === 0);
-  if (!route?.summary) return null;
+  if (!route) return null;
+  if (!validRouteMetric(route.summary?.distance) || !validRouteMetric(route.summary?.duration)) throw new Error('Invalid route metrics');
   const sections = route.sections ?? [];
   const path = sections.flatMap(section =>
     (section.roads ?? []).flatMap(road => {
@@ -224,7 +232,7 @@ async function loadKakaoCarDirections(
       for (let index = 0; index + 1 < vertices.length; index += 2) {
         const lng = vertices[index];
         const lat = vertices[index + 1];
-        if (Number.isFinite(lat) && Number.isFinite(lng)) pairs.push([lat, lng]);
+        if (isValidCoordinate(lat, lng)) pairs.push([lat, lng]);
       }
       return pairs;
     })
@@ -250,9 +258,10 @@ async function loadKakaoCarDirections(
 
   return {
     mode: 'car',
-    distanceMeters: route.summary.distance ?? straightDistance,
-    durationSeconds: route.summary.duration ?? Math.round(straightDistance / 8.3),
+    distanceMeters: route.summary!.distance!,
+    durationSeconds: route.summary!.duration!,
     path: ensurePath(path, endpoints),
+    pathSource: path.length >= 2 ? 'provider' : 'straight-line',
     ...routeLinks('car', endpoints),
     source: 'kakao-mobility',
     summary: toll !== undefined && toll > 0 ? { fareWon: toll } : undefined,
@@ -263,7 +272,8 @@ async function loadKakaoCarDirections(
 function fallbackResult(
   mode: DirectionMode,
   endpoints: RouteEndpoints,
-  straightDistance: number
+  straightDistance: number,
+  fallbackReason: DirectionResult['fallbackReason']
 ): DirectionResult {
   const { origin, destination } = endpoints;
   const metersPerSecond: Record<DirectionMode, number> = {
@@ -279,9 +289,11 @@ function fallbackResult(
     distanceMeters: straightDistance,
     durationSeconds: Math.round(straightDistance / metersPerSecond[mode]),
     path: [[origin.lat, origin.lng], [destination.lat, destination.lng]],
+    pathSource: 'straight-line',
+    fallbackReason,
     ...routeLinks(mode, endpoints),
     source: walkingWithoutKey ? 'straight-line-estimate' : 'straight-line-fallback',
-    disclaimer: `${mode === 'walking' ? '도보' : mode === 'public' ? '대중교통' : mode === 'bicycle' ? '자전거' : '자동차'} 경로 공급자에 연결할 수 없어 직선거리 예상치를 표시합니다.`
+    disclaimer: '실제 이동 경로를 확인하지 못했습니다. 표시된 거리는 직선거리이며 소요 시간·운행 여부는 카카오맵에서 확인해 주세요.'
   };
 }
 
@@ -292,39 +304,54 @@ export async function resolveDirections(
 ): Promise<{ result: DirectionResult; cacheHit: boolean; fallback: boolean }> {
   const startedAt = Date.now();
   const key = cacheKey(mode, endpoints);
-  const cached = directionsCache.get(key);
-  if (cached) return { result: cached, cacheHit: true, fallback: false };
+  const cached = directionsCache.get(key) ?? failedDirectionsCache.get(key);
+  if (cached) return { result: { ...cached, ...routeLinks(mode, endpoints) }, cacheHit: true, fallback: Boolean(cached.fallbackReason) };
 
-  const apiKey = process.env.KAKAO_REST_API_KEY?.trim();
-  let result: DirectionResult | null = null;
-  const provider = mode === 'car' ? 'kakao-mobility' : 'kakao-map';
-
-  if (apiKey) {
-    try {
-      result = mode === 'car'
-        ? await loadKakaoCarDirections(apiKey, endpoints, straightDistance)
-        : await loadKakaoMapDirections(apiKey, mode, endpoints);
-    } catch {
-      result = null;
-    }
+  const pending = pendingDirections.get(key);
+  if (pending) {
+    const result = await pending;
+    return { result: { ...result, ...routeLinks(mode, endpoints) }, cacheHit: true, fallback: Boolean(result.fallbackReason) };
   }
 
-  if (result) directionsCache.set(key, result);
-  const fallback = !result;
+  const task = (async () => {
+    const apiKey = process.env.KAKAO_REST_API_KEY?.trim();
+    let result: DirectionResult | null = null;
+    let fallbackReason: DirectionResult['fallbackReason'] = 'not-configured';
+    const provider = mode === 'car' ? 'kakao-mobility' : 'kakao-map';
 
-  console.info(JSON.stringify({
-    event: 'provider_request',
-    provider,
-    operation: `directions:${mode}`,
-    cacheHit: false,
-    fallback,
-    durationMs: Date.now() - startedAt
-  }));
+    if (apiKey) {
+      try {
+        fallbackReason = 'no-route';
+        result = mode === 'car'
+          ? await loadKakaoCarDirections(apiKey, endpoints)
+          : await loadKakaoMapDirections(apiKey, mode, endpoints);
+      } catch {
+        result = null;
+        fallbackReason = 'provider-error';
+      }
+    }
 
-  return {
-    result: result ?? fallbackResult(mode, endpoints, straightDistance),
-    cacheHit: false,
-    fallback
-  };
+    if (result) directionsCache.set(key, result);
+    else failedDirectionsCache.set(key, fallbackResult(mode, endpoints, straightDistance, fallbackReason));
+    const fallback = !result;
+
+    console.info(JSON.stringify({
+      event: 'provider_request',
+      provider,
+      operation: `directions:${mode}`,
+      cacheHit: false,
+      fallback,
+      durationMs: Date.now() - startedAt
+    }));
+
+    return result ?? fallbackResult(mode, endpoints, straightDistance, fallbackReason);
+  })();
+  pendingDirections.set(key, task);
+  try {
+    const result = await task;
+    return { result, cacheHit: false, fallback: Boolean(result.fallbackReason) };
+  } finally {
+    pendingDirections.delete(key);
+  }
 }
 

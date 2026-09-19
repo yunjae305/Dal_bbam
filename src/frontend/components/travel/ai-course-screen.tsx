@@ -17,6 +17,7 @@ import { plannerMessages } from '@/shared/planner-messages';
 import { localizeCuratedCourse } from '@/shared/curated-course-copy';
 import { addDateDays, todayLocalDate } from '@/frontend/schedule-utils';
 import { CourseRouteMap } from '@/frontend/components/travel/course-route-map';
+import { formatDistance } from '@/shared/format-distance';
 
 type Props = { places: Place[] };
 
@@ -326,6 +327,7 @@ export function AiCourseScreen({ places }: Props) {
                     <div className="min-w-0">
                       <h3 className="truncate text-[12px] font-black">{place?.name || stop.contentId}</h3>
                       <p className="mt-1 text-[10px] font-bold tabular-nums text-[#223c72]">{planner.day.replace('{day}', String((stop.dayIndex ?? 0) + 1))} · {stop.startTime}–{stop.endTime}{Boolean(stop.travelMinutes) && ` · ${planner.transfer.replace('{minutes}', String(stop.travelMinutes))}`}</p>
+                      {typeof stop.distanceMeters === 'number' && stop.distanceMeters > 0 && <p className="mt-1 text-[10px] tabular-nums text-[#69727e]">{(stop.travelSource ?? plan.timingSource) !== 'map-provider' ? '≈ ' : ''}{formatDistance(stop.distanceMeters)}</p>}
                       <p className="mt-1 line-clamp-2 text-[9px] leading-4 text-[#7e8793]">{stop.reason} · {ui.minutes.replace('{minutes}', String(stop.stayMinutes))}</p>
                     </div>
                   </li>

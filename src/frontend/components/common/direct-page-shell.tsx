@@ -4,10 +4,11 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { useState } from 'react';
-import { CalendarDays, CircleUserRound, Home, LoaderCircle, LogOut, MapPin, Sparkles } from 'lucide-react';
+import { CalendarDays, CircleUserRound, Download, Home, LoaderCircle, LogOut, MapPin, Sparkles } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { LocaleSwitcher } from '@/frontend/components/common/locale-switcher';
 import { useLocale } from '@/frontend/i18n/locale-context';
+import { pwaMessages } from '@/shared/pwa-messages';
 
 type NavKey = 'home' | 'course' | 'map' | 'schedule' | 'my';
 type NavLink = { href: string; key: NavKey; icon: LucideIcon; asset?: string; activeAsset?: string };
@@ -22,16 +23,20 @@ const links: NavLink[] = [
 
 export function DirectPageShell({ children, publicView = false }: { children: React.ReactNode; publicView?: boolean }) {
   const pathname = usePathname();
-  const { messages } = useLocale();
+  const { locale, messages } = useLocale();
   const [loggingOut, setLoggingOut] = useState(false);
+  const [logoutFailed, setLogoutFailed] = useState(false);
 
   async function logout() {
     setLoggingOut(true);
+    setLogoutFailed(false);
     try {
-      await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
+      const response = await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
+      if (!response.ok) throw new Error('Logout failed');
       window.location.replace('/login');
     } catch {
       setLoggingOut(false);
+      setLogoutFailed(true);
     }
   }
 
@@ -41,6 +46,7 @@ export function DirectPageShell({ children, publicView = false }: { children: Re
         <div className="flex min-h-12 items-center justify-between gap-2 bg-[#1f1f1f] px-4 text-[11px] font-black text-white/70">
           <Link href="/" className="shrink-0 text-white">DAL BBAM</Link>
           <div className="flex min-w-0 items-center gap-1">
+            <Link href="/install" aria-label={pwaMessages[locale].title} title={pwaMessages[locale].title} className="grid min-h-11 min-w-11 place-items-center rounded-full text-white/80"><Download size={17} /></Link>
             <LocaleSwitcher />
             {!publicView && <button
               type="button"
@@ -54,6 +60,7 @@ export function DirectPageShell({ children, publicView = false }: { children: Re
             </button>}
           </div>
         </div>
+        {logoutFailed && <p role="alert" className="px-4 py-3 text-sm text-red-800">{messages.common.logout} · {messages.common.retry}</p>}
         <div className={publicView ? 'pb-8' : 'pb-[calc(72px+env(safe-area-inset-bottom))]'}>{children}</div>
         {!publicView && <nav className="fixed bottom-0 left-1/2 z-40 grid min-h-[64px] w-full max-w-[430px] -translate-x-1/2 grid-cols-5 items-center border-t bg-[#f5f1ea]/95 px-5 pb-[env(safe-area-inset-bottom)] backdrop-blur" aria-label={messages.common.mainMenu}>
           {links.map(({ href, key, icon: Icon, asset, activeAsset }) => {

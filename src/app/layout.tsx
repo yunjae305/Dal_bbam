@@ -4,11 +4,12 @@ import './globals.css';
 import { ServiceWorkerRegister } from '@/frontend/components/service-worker-register';
 import { LocaleProvider } from '@/frontend/i18n/locale-context';
 import { isLang, localeCookieName } from '@/shared/i18n';
+import { PwaInstallProvider } from '@/frontend/components/pwa-install';
 
 export const metadata: Metadata = {
-  title: 'AI와 함께하는 경주 역사 여행',
-  description: '관광 데이터 기반 경주 여행 PWA MVP',
-  applicationName: 'AI 경주',
+  title: '달밤 · 경주 여행',
+  description: '경주 관광지 탐색, 이동수단별 길찾기와 나만의 여행 일정',
+  applicationName: '달밤',
   icons: {
     icon: [
       { url: '/icon-192.png', sizes: '192x192', type: 'image/png' },
@@ -18,7 +19,7 @@ export const metadata: Metadata = {
   },
   appleWebApp: {
     capable: true,
-    title: 'AI 경주',
+    title: '달밤',
     statusBarStyle: 'default'
   }
 };
@@ -42,8 +43,10 @@ export default async function RootLayout({
   return (
     <html lang={locale}>
       <body>
-        <LocaleProvider initialLocale={locale}>{children}</LocaleProvider>
-        <ServiceWorkerRegister />
+        <LocaleProvider initialLocale={locale}>
+          <PwaInstallProvider>{children}</PwaInstallProvider>
+          <ServiceWorkerRegister />
+        </LocaleProvider>
       </body>
     </html>
   );

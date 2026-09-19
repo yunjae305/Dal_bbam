@@ -23,7 +23,8 @@ function fixture({ emptyVideos = false, rankingFailure = false } = {}) {
       if (bucket) return Response.json({ id: bucket.id, public: bucket.public, file_size_limit: 10485760, allowed_mime_types: bucket.types });
     }
     if (url.hostname === 'apis.data.go.kr') return Response.json({ response: { header: { resultCode: '0000' }, body: { totalCount: 10 } } });
-    if (url.hostname === 'dapi.kakao.com') return Response.json({});
+    if (url.hostname === 'dapi.kakao.com') return Response.json({ status: 'OK', route: { properties: { totalDistance: 14000, totalTime: 10000 } }, routes: [{ properties: { totalDistance: 18000, totalTime: 2200 } }] });
+    if (url.hostname === 'apis-navi.kakaomobility.com') return Response.json({ routes: [{ result_code: 0, summary: { distance: 15000, duration: 1800 } }] });
     throw new Error('Unexpected provider request');
   };
   return { fetcher, calls };
@@ -54,4 +55,14 @@ test('missing published videos and failed ranking execution each fail the releas
     assert.equal(report.providers.database.operational, false);
     assert.equal(report.providers.database.reachable, true);
   }
+});
+
+test('a working place search cannot mask a broken transit provider at release time', async () => {
+  const { fetcher } = fixture();
+  const report = await verifyProviders({ env, fetcher: (url, options) => String(url).includes('/routing/publictraffic')
+    ? Promise.resolve(Response.json({ status: 'NO_RESULTS' })) : fetcher(url, options) });
+  assert.equal(report.ok, false);
+  assert.equal(report.providers.kakao.operational, false);
+  assert.equal(report.providers.kakao.directions.public.operational, false);
+  assert.equal(report.providers.kakao.directions.walking.operational, true);
 });

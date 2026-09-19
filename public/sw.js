@@ -1,4 +1,4 @@
-const cacheName = 'gyeongju-travel-public-v5';
+const cacheName = 'gyeongju-travel-public-v6';
 const assets = [
   '/icon.svg',
   '/icon-192.png',
@@ -13,6 +13,11 @@ function isPublicPlaceApi(path) {
   return path === '/api/home' || path === '/api/places' || /^\/api\/places\/[^/]+$/.test(path);
 }
 
+async function matchCached(request) {
+  const current = await caches.open(cacheName);
+  return (await current.match(request)) || caches.match(request);
+}
+
 function isCacheable(request, response) {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin || !response || !response.ok) return false;
@@ -20,7 +25,7 @@ function isCacheable(request, response) {
 
   if (url.pathname.startsWith('/_next/static/') || assets.includes(url.pathname)) return true;
   if (isPublicPlaceApi(url.pathname)) {
-    return !request.headers.has('authorization');
+    return !request.headers.has('authorization') && /\bpublic\b/i.test(response.headers.get('cache-control') || '');
   }
 
   return false;
@@ -43,12 +48,16 @@ async function precache() {
 
 self.addEventListener('install', event => {
   event.waitUntil(precache());
-  self.skipWaiting();
+  // A replacement waits for the user to save their work and accept the update.
 });
 
 self.addEventListener('activate', event => {
-  event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(key => key.startsWith('gyeongju-travel-public-') && key !== cacheName).map(key => caches.delete(key)))));
-  self.clients.claim();
+  event.waitUntil((async () => {
+    const keys = (await caches.keys()).filter(key => key.startsWith('gyeongju-travel-public-') && key !== cacheName);
+    // Keep one previous build for offline places and tabs still using its chunks.
+    await Promise.all(keys.slice(0, -1).map(key => caches.delete(key)));
+    await self.clients.claim();
+  })());
 });
 
 self.addEventListener('message', event => {
@@ -56,13 +65,17 @@ self.addEventListener('message', event => {
 });
 
 self.addEventListener('fetch', event => {
-  if (event.request.method !== 'GET') {
+  if (event.request.method !== 'GET' || event.request.headers.has('authorization')) {
     return;
   }
 
   const url = new URL(event.request.url);
+  if (url.origin !== self.location.origin) return;
   if (event.request.mode === 'navigate') {
-    event.respondWith(fetch(event.request).catch(() => caches.match('/offline')));
+    event.respondWith(fetch(event.request).catch(async () => (await matchCached('/offline')) || new Response(
+      '<!doctype html><html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>달밤 · 오프라인</title><body><main><h1>인터넷 연결을 확인해 주세요</h1><p>You are offline. Reconnect and try again.</p><a href="/">다시 시도 · Retry</a></main></body></html>',
+      { status: 503, headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' } }
+    )));
     return;
   }
 
@@ -77,8 +90,14 @@ self.addEventListener('fetch', event => {
   event.respondWith(fetch(event.request).then(response => {
     if (isCacheable(event.request, response)) {
       const copy = response.clone();
-      event.waitUntil(caches.open(cacheName).then(cache => cache.put(event.request, copy)));
+      event.waitUntil(caches.open(cacheName).then(async cache => {
+        await cache.put(event.request, copy);
+        if (isPublicPlaceApi(url.pathname)) {
+          const entries = (await cache.keys()).filter(request => isPublicPlaceApi(new URL(request.url).pathname));
+          await Promise.all(entries.slice(0, -100).map(request => cache.delete(request)));
+        }
+      }).catch(() => undefined)); // Storage quota failure must not break a successful network response.
     }
     return response;
-  }).catch(() => caches.match(event.request).then(response => response || Response.error())));
+  }).catch(() => matchCached(event.request).then(response => response || Response.error())));
 });

@@ -288,7 +288,8 @@ async function withMapTiming(plan: CoursePlan, request: CourseRequest): Promise<
     if (resolved.fallback) return;
     legs.set(courseLegKey(previous.contentId, stop.contentId), {
       distanceMeters: resolved.result.distanceMeters,
-      travelMinutes: Math.ceil(resolved.result.durationSeconds / 60), fromProvider: true, path: resolved.result.path
+      travelMinutes: Math.ceil(resolved.result.durationSeconds / 60), fromProvider: true, path: resolved.result.path,
+      pathSource: resolved.result.pathSource
     });
   }));
   return { ...plan, ...timeCourseStops(plan.stops, request, legs) };

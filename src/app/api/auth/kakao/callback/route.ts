@@ -13,6 +13,7 @@ import {
 import { findOrCreateSocialUser } from '@/backend/auth/social-users';
 import { createPersistedSession } from '@/backend/auth/persisted-session';
 import { NextRequest, NextResponse } from 'next/server';
+import { AUTH_NEXT_COOKIE, safeNextPath } from '@/shared/auth-navigation';
 
 type LoginError =
   | 'kakao_cancelled'
@@ -66,7 +67,7 @@ export async function GET(request: NextRequest) {
       provider: 'kakao',
       ...profile
     });
-    const response = NextResponse.redirect(getFrontendUrl(request.nextUrl.origin));
+    const response = NextResponse.redirect(new URL(safeNextPath(request.cookies.get(AUTH_NEXT_COOKIE)?.value), getFrontendUrl(request.nextUrl.origin)));
 
     const token = await createPersistedSession({
       sub: user.id,
@@ -108,6 +109,7 @@ function errorResponse(request: NextRequest, error: LoginError): NextResponse {
     loginUrl = new URL('/login', request.nextUrl.origin);
   }
   loginUrl.searchParams.set('error', error);
+  loginUrl.searchParams.set('next', safeNextPath(request.cookies.get(AUTH_NEXT_COOKIE)?.value));
   const response = NextResponse.redirect(loginUrl);
 
   clearStateCookie(response);
@@ -117,6 +119,7 @@ function errorResponse(request: NextRequest, error: LoginError): NextResponse {
 }
 
 function clearStateCookie(response: NextResponse): void {
+  response.cookies.set(AUTH_NEXT_COOKIE, '', { ...getAuthCookieOptions(), maxAge: 0 });
   response.cookies.set(KAKAO_STATE_COOKIE, '', {
     ...getAuthCookieOptions(),
     maxAge: 0

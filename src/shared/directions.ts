@@ -24,6 +24,8 @@ export type DirectionResult = {
   webFallbackUrl: string;
   appUrl: string;
   source: string;
+  pathSource?: 'provider' | 'straight-line';
+  fallbackReason?: 'not-configured' | 'no-route' | 'provider-error';
   disclaimer?: string;
   summary?: DirectionSummary;
   steps?: DirectionStep[];
@@ -38,4 +40,8 @@ export type DirectionComparison = {
 
 export function isFallbackDirection(result: Pick<DirectionResult, 'source'>): boolean {
   return result.source.startsWith('straight-line');
+}
+
+export function validRouteMetric(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0;
 }

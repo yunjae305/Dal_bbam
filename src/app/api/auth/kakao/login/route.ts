@@ -7,6 +7,7 @@ import {
 } from '@/backend/auth/kakao';
 import { getAuthCookieOptions } from '@/backend/auth/session';
 import { NextRequest, NextResponse } from 'next/server';
+import { AUTH_NEXT_COOKIE, safeNextPath } from '@/shared/auth-navigation';
 
 export async function GET(request: NextRequest) {
   try {
@@ -16,6 +17,9 @@ export async function GET(request: NextRequest) {
     response.cookies.set(KAKAO_STATE_COOKIE, state, {
       ...getAuthCookieOptions(),
       maxAge: KAKAO_STATE_TTL_SECONDS
+    });
+    response.cookies.set(AUTH_NEXT_COOKIE, safeNextPath(request.nextUrl.searchParams.get('next')), {
+      ...getAuthCookieOptions(), maxAge: KAKAO_STATE_TTL_SECONDS
     });
     response.headers.set('Cache-Control', 'no-store');
 

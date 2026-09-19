@@ -2,13 +2,19 @@ import type { MetadataRoute } from 'next';
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: 'AI와 함께하는 경주 역사 여행',
-    short_name: 'AI 경주',
-    description: '일정과 관광 콘텐츠를 바탕으로 코스를 추천하는 경주 여행 PWA',
+    id: '/',
+    name: '달밤 · 경주 여행',
+    short_name: '달밤',
+    lang: 'ko',
+    description: '경주 관광지 탐색, 이동수단별 길찾기와 나만의 여행 일정',
     start_url: '/',
     scope: '/',
     display: 'standalone',
-    orientation: 'portrait',
+    categories: ['travel', 'navigation'],
+    shortcuts: [
+      { name: '경주 지도', url: '/map', icons: [{ src: '/icon-192.png', sizes: '192x192' }] },
+      { name: '여행 일정', url: '/schedule', icons: [{ src: '/icon-192.png', sizes: '192x192' }] }
+    ],
     background_color: '#eef3ee',
     theme_color: '#12372f',
     icons: [

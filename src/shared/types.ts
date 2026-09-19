@@ -118,6 +118,8 @@ export type CourseStop = {
   travelMinutes?: number;
   distanceMeters?: number;
   travelPath?: [number, number][];
+  travelSource?: 'map-provider' | 'estimated';
+  travelPathSource?: 'provider' | 'straight-line';
   place?: PlaceSummary;
 };
 

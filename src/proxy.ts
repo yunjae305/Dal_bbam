@@ -3,13 +3,18 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { verifySessionToken, SESSION_COOKIE } from '@/backend/auth/session';
 import { validatePersistedSession } from '@/backend/auth/persisted-session';
 import { isDemoModeEnabled } from '@/backend/auth/demo';
+import { safeNextPath } from '@/shared/auth-navigation';
 
 export async function proxy(request: NextRequest) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
   const isLoginPage = request.nextUrl.pathname === '/login';
   const isPublicShare = /^\/(?:courses|schedule)\/share\/[a-f0-9]{32}$/i.test(request.nextUrl.pathname);
-  const isPublicLegal = request.nextUrl.pathname.startsWith('/legal/') || request.nextUrl.pathname === '/offline';
+  const isPublicLegal = request.nextUrl.pathname.startsWith('/legal/') || ['/offline', '/install'].includes(request.nextUrl.pathname);
+  if (isPublicShare || isPublicLegal) return NextResponse.next();
+  const loginUrl = new URL('/login', request.url);
+  loginUrl.searchParams.set('next', request.nextUrl.pathname + request.nextUrl.search);
+  const afterLogin = new URL(safeNextPath(request.nextUrl.searchParams.get('next')), request.url);
   const token = request.cookies.get(SESSION_COOKIE)?.value;
   const session = token ? verifySessionToken(token) : null;
   const customSessionValid = session?.provider === 'demo'
@@ -19,12 +24,9 @@ export async function proxy(request: NextRequest) {
       : false;
 
   if (customSessionValid && isLoginPage) {
-    return NextResponse.redirect(new URL('/', request.url));
+    return NextResponse.redirect(afterLogin);
   }
   if (customSessionValid) {
-    return NextResponse.next();
-  }
-  if (isPublicShare || isPublicLegal) {
     return NextResponse.next();
   }
 
@@ -49,17 +51,17 @@ export async function proxy(request: NextRequest) {
     const { data: { user } } = await supabase.auth.getUser();
 
     if (!user && !isLoginPage) {
-      return NextResponse.redirect(new URL('/login', request.url));
+      return NextResponse.redirect(loginUrl);
     }
     if (user && isLoginPage) {
-      return NextResponse.redirect(new URL('/', request.url));
+      return NextResponse.redirect(afterLogin);
     }
     return response;
   }
 
   // Supabase 미설정 환경에서는 자체 세션 쿠키 인증을 사용합니다.
   if (!isLoginPage) {
-    return NextResponse.redirect(new URL('/login', request.url));
+    return NextResponse.redirect(loginUrl);
   }
   return NextResponse.next();
 }

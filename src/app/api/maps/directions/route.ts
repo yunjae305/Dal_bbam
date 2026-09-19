@@ -6,7 +6,7 @@ import { resolveDirections, type RouteEndpoints } from '@/backend/kakao-directio
 import { directionModes, type DirectionMode } from '@/shared/directions';
 export type { DirectionMode, DirectionResult, DirectionStep } from '@/shared/directions';
 
-const responseCacheControl = 'private, max-age=60';
+const responseCacheControl = 'private, no-store';
 
 function coordinate(request: NextRequest, key: string): number {
   const value = request.nextUrl.searchParams.get(key)?.trim();
@@ -35,6 +35,10 @@ export async function GET(request: NextRequest) {
     lng: coordinate(request, 'destinationLng')
   };
   const mode = directionMode(request);
+  const requestedMode = request.nextUrl.searchParams.get('mode');
+  if (requestedMode && requestedMode !== 'all' && !directionModes.includes(requestedMode as DirectionMode)) {
+    return apiError('INVALID_MODE', '지원하지 않는 이동수단입니다.');
+  }
   const endpoints: RouteEndpoints = {
     origin,
     destination,
@@ -76,7 +80,7 @@ export async function GET(request: NextRequest) {
 
   const { result, cacheHit, fallback } = await resolveDirections(mode, endpoints, straightDistance);
   return apiData(result, {
-    meta: cacheHit ? { cacheHit: true } : fallback ? { fallback: true } : undefined,
+    meta: { cacheHit, fallback },
     headers: { 'Cache-Control': responseCacheControl }
   });
 }

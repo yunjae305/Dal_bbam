@@ -26,6 +26,7 @@ import { MapPattern } from '@/frontend/components/common/ui';
 import { useLocale } from '@/frontend/i18n/locale-context';
 import { readLocationConsent, saveLocationConsent } from '@/frontend/location-consent';
 import { formatDistance } from '@/shared/format-distance';
+import { loadKakaoMaps } from '@/frontend/kakao-sdk';
 
 type KakaoLatLng = object;
 type KakaoLatLngPoint = {
@@ -119,52 +120,6 @@ type Coordinates = { lat: number; lng: number; accuracy?: number };
 
 const ENDPOINT_MARKER_BASE = 'https://t1.daumcdn.net/localimg/localimages/07/mapapidoc/';
 
-let mapsLoader: Promise<void> | null = null;
-
-function loadKakaoMaps(): Promise<void> {
-  if (window.kakao?.maps) {
-    return new Promise(resolve => window.kakao?.maps.load(resolve));
-  }
-  if (mapsLoader) return mapsLoader;
-
-  mapsLoader = new Promise<void>((resolve, reject) => {
-    const key = process.env.NEXT_PUBLIC_KAKAO_MAP_JS_KEY;
-    if (!key) {
-      reject(new Error('Kakao map JavaScript key is not configured.'));
-      return;
-    }
-
-    const finish = () => {
-      if (!window.kakao?.maps) {
-        reject(new Error('Kakao Maps SDK did not initialize.'));
-        return;
-      }
-      window.kakao.maps.load(resolve);
-    };
-    const fail = () => reject(new Error('Kakao Maps SDK failed to load.'));
-    const existing = document.querySelector<HTMLScriptElement>('script[data-kakao-map-sdk]');
-    if (existing) {
-      existing.addEventListener('load', finish, { once: true });
-      existing.addEventListener('error', fail, { once: true });
-      return;
-    }
-
-    const script = document.createElement('script');
-    script.dataset.kakaoMapSdk = 'true';
-    script.async = true;
-    script.src = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${encodeURIComponent(key)}&autoload=false&libraries=clusterer`;
-    script.onload = finish;
-    script.onerror = fail;
-    document.head.appendChild(script);
-  }).catch(error => {
-    mapsLoader = null;
-    document.querySelector<HTMLScriptElement>('script[data-kakao-map-sdk]')?.remove();
-    throw error;
-  });
-
-  return mapsLoader;
-}
-
 function placePoint(place: MapPlace): RoutePoint {
   return {
     kind: 'place',
@@ -179,7 +134,7 @@ export function formatRouteDuration(
   seconds: number,
   templates: { durationHours: string; durationMinutes: string }
 ): string {
-  const totalMinutes = Math.max(1, Math.round(seconds / 60));
+  const totalMinutes = seconds === 0 ? 0 : Math.max(1, Math.ceil(seconds / 60));
   const hours = Math.floor(totalMinutes / 60);
   const minutes = totalMinutes % 60;
   return hours > 0
@@ -190,7 +145,8 @@ export function formatRouteDuration(
 function pickDefaultMode(results: DirectionResult[]): DirectionMode | null {
   if (!results.length) return null;
   const preferred = results.filter(result => !isFallbackDirection(result));
-  const candidates = preferred.length ? preferred : results;
+  if (!preferred.length) return 'walking';
+  const candidates = preferred;
   return candidates.reduce((best, item) => item.durationSeconds < best.durationSeconds ? item : best).mode;
 }
 
@@ -335,10 +291,10 @@ export function KakaoMapExplorer({
       mapClickRef.current = { map, listener };
       setMapGeneration(value => value + 1);
       setMapAvailable(true);
-    }).catch(error => {
+    }).catch(() => {
       if (cancelled) return;
       setMapAvailable(false);
-      setMapError(error instanceof Error ? error.message : 'Kakao Maps SDK failed to load.');
+      setMapError(messages.map.unavailable);
     });
 
     return () => {
@@ -355,7 +311,7 @@ export function KakaoMapExplorer({
       mapClickRef.current = null;
       mapRef.current = null;
     };
-  }, [assignEndpoint, clearMarkers, mapRetryToken, messages.map.mapPoint, removePolyline]);
+  }, [assignEndpoint, clearMarkers, mapRetryToken, messages.map.mapPoint, messages.map.unavailable, removePolyline]);
 
   useEffect(() => {
     const maps = window.kakao?.maps;
@@ -553,7 +509,7 @@ export function KakaoMapExplorer({
       strokeWeight: 5,
       strokeColor: '#b94f4a',
       strokeOpacity: 0.85,
-      strokeStyle: 'solid'
+      strokeStyle: isFallbackDirection(directions) || directions.pathSource === 'straight-line' ? 'shortdash' : 'solid'
     });
     polylineRef.current.setMap(map);
     const bounds = new maps.LatLngBounds();
@@ -707,7 +663,6 @@ export function KakaoMapExplorer({
   }, [onSearchArea]);
 
   const retryMap = useCallback(() => {
-    mapsLoader = null;
     if (!window.kakao?.maps) {
       document.querySelector<HTMLScriptElement>('script[data-kakao-map-sdk]')?.remove();
     }
@@ -748,9 +703,10 @@ export function KakaoMapExplorer({
     durationMinutes: messages.map.durationMinutes
   };
   const showRoutePanel = Boolean(selectedPlace || origin || destination);
+  const estimated = directions ? isFallbackDirection(directions) : false;
   const summaryParts = directions ? [
-    formatDistance(directions.distanceMeters),
-    formatRouteDuration(directions.durationSeconds, durationTemplates),
+    `${estimated ? `${messages.map.estimateTag} ` : ''}${formatDistance(directions.distanceMeters)}`,
+    estimated ? '' : formatRouteDuration(directions.durationSeconds, durationTemplates),
     typeof directions.summary?.transfers === 'number'
       ? messages.map.transfers.replace('{count}', String(directions.summary.transfers))
       : '',
@@ -898,9 +854,12 @@ export function KakaoMapExplorer({
                   <span>{modeLabels[mode]}</span>
                   <span className={`mt-0.5 text-[10px] tabular-nums ${active ? 'text-white' : 'text-[#2f7567]'}`}>
                     {result
-                      ? `${isFallbackDirection(result) ? '≈' : ''}${formatRouteDuration(result.durationSeconds, durationTemplates)}`
+                      ? isFallbackDirection(result) ? messages.map.noRoute : formatRouteDuration(result.durationSeconds, durationTemplates)
                       : routeLoading ? '…' : '—'}
                   </span>
+                  {result && <span className="mt-0.5 text-[10px] tabular-nums">
+                    {isFallbackDirection(result) ? `${messages.map.estimateTag} ` : ''}{formatDistance(result.distanceMeters)}
+                  </span>}
                 </button>
               );
             })}
@@ -911,10 +870,15 @@ export function KakaoMapExplorer({
               <RotateCw className="animate-spin" size={11} /> {messages.map.routeComparing}
             </p>
           )}
+          {(routeError || comparison?.results.some(isFallbackDirection)) && !routeLoading && (
+            <button type="button" onClick={() => void compareRoutes()} className="mt-2 inline-flex min-h-11 items-center gap-1 rounded-xl px-3 text-xs font-bold text-[#2f7567]">
+              <RotateCw size={14} /> {messages.common.retry}
+            </button>
+          )}
 
           {directions && (
             <div className="mt-2 flex items-center justify-between gap-3 text-[10px]">
-              <span className="min-w-0 truncate">{summaryParts.join(' · ')}</span>
+              <span className="min-w-0 text-pretty leading-5">{summaryParts.join(' · ')}</span>
               <div className="flex shrink-0 items-center gap-2">
                 {directions.steps && directions.steps.length > 0 && (
                   <button
@@ -950,8 +914,8 @@ export function KakaoMapExplorer({
             </ol>
           )}
 
-          {(locationError || routeError || directions?.disclaimer) && (
-            <p className="mt-2 text-[9px] leading-4 text-[#a04c48]">{locationError || routeError || directions?.disclaimer}</p>
+          {(locationError || routeError || directions?.disclaimer || directions?.pathSource === 'straight-line') && (
+            <p className="mt-2 text-xs leading-5 text-[#a04c48]" role="status">{locationError || routeError || (estimated ? messages.map.routeUnavailable : messages.map.pathUnavailable)}</p>
           )}
         </div>
       )}

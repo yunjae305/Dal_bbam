@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import { WifiOff } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useLocale } from '@/frontend/i18n/locale-context';
@@ -29,7 +28,7 @@ export default function OfflinePage() {
         <WifiOff className="mx-auto text-[#2f7567]" size={42} />
         <h1 className="mt-5 text-balance text-2xl font-black">{ui.title}</h1>
         <p className="mt-3 text-pretty text-sm leading-6 text-[#65706c]">{ui.description}</p>
-        <Link href="/" className="mt-6 flex min-h-11 items-center justify-center rounded-xl bg-[#12372f] font-bold text-white transition-transform active:scale-[0.96]">{ui.retry}</Link>
+        <a href="/" className="mt-6 flex min-h-11 items-center justify-center rounded-xl bg-[#12372f] font-bold text-white transition-transform active:scale-[0.96]">{ui.retry}</a>
         <div className="mt-7 text-left">
           <h2 className="text-lg font-bold">{copy.offlinePlaces}</h2>
           <p className="mt-2 text-sm text-[#65706c]">{places.length ? copy.offlineSaved : copy.offlineEmpty}</p>

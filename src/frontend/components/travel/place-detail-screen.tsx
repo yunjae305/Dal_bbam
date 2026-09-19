@@ -178,7 +178,7 @@ export function PlaceDetailScreen({ contentId }: { contentId: string }) {
   return (
     <main className="min-h-dvh bg-[#f7f4ef] pb-28">
       <div className="relative h-[42dvh] min-h-[300px]">
-        <img src={place.imageUrl} alt={place.name} className="h-full w-full object-cover" />
+        {place.imageUrl && <img src={place.imageUrl} alt={place.name} className="h-full w-full object-cover" />}
         <div className="absolute inset-0 bg-gradient-to-t from-black/65 via-transparent to-black/35" />
         <button type="button" onClick={goBack} className="absolute left-4 top-5 grid h-10 w-10 place-items-center rounded-full bg-black/30 text-white backdrop-blur" aria-label={ui.backToMap}><ChevronLeft /></button>
         <button type="button" onClick={share} className="absolute right-4 top-5 grid h-10 w-10 place-items-center rounded-full bg-black/30 text-white backdrop-blur" aria-label={messages.common.share}><Share2 size={18} /></button>

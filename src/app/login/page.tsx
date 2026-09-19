@@ -7,6 +7,9 @@ import { useLocale } from '@/frontend/i18n/locale-context';
 import { uiMessages } from '@/shared/ui-messages';
 import { SIGNUP_CONSENT_VERSION, signupConsentCopy } from '@/shared/signup-consent';
 import { authProviderMessages } from '@/shared/auth-provider-messages';
+import Link from 'next/link';
+import { safeNextPath } from '@/shared/auth-navigation';
+import { pwaMessages } from '@/shared/pwa-messages';
 
 type Mode = 'login' | 'signup';
 
@@ -31,6 +34,7 @@ export default function LoginPage() {
   const [privacyAccepted, setPrivacyAccepted] = useState(false);
 
   const isSignup = mode === 'signup';
+  const nextPath = () => safeNextPath(new URLSearchParams(window.location.search).get('next'));
 
   useEffect(() => {
     let active = true;
@@ -85,11 +89,11 @@ export default function LoginPage() {
 
   function startGoogleLogin() {
     if (googleAvailability !== 'available') return;
-    window.location.assign('/api/auth/google/login');
+    window.location.assign(`/api/auth/google/login?${new URLSearchParams({ next: nextPath() })}`);
   }
 
   function startKakaoLogin() {
-    window.location.assign('/api/auth/kakao/login');
+    window.location.assign(`/api/auth/kakao/login?${new URLSearchParams({ next: nextPath() })}`);
   }
 
   async function startDemoLogin() {
@@ -104,7 +108,7 @@ export default function LoginPage() {
       if (!res.ok) {
         setError(result.error ?? ui.demoFailed);
       } else {
-        window.location.replace('/');
+        window.location.replace(nextPath());
       }
     } catch {
       setError(ui.networkError);
@@ -178,7 +182,7 @@ export default function LoginPage() {
       } else if (isSignup) {
         setMessage(ui.verificationSent);
       } else {
-        window.location.replace('/');
+          window.location.replace(nextPath());
       }
     } catch {
       setError(ui.networkError);
@@ -435,6 +439,7 @@ export default function LoginPage() {
               <a href="/legal/privacy" className="underline underline-offset-2">{ui.privacy}</a>{ui.continueSuffix}
             </p>}
           </form>
+          <Link href="/install" className="mt-4 flex min-h-11 items-center justify-center text-sm font-semibold text-white underline underline-offset-4">{pwaMessages[locale].title}</Link>
         </div>
       </section>
     </main>

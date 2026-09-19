@@ -100,9 +100,11 @@ const ko = {
     toll: '통행료 {fare}원',
     durationHours: '{h}시간 {m}분',
     durationMinutes: '{m}분',
-    estimateTag: '직선 예상',
+    estimateTag: '직선거리',
+    routeUnavailable: '실제 경로를 확인하지 못해 직선거리만 표시합니다. 소요 시간과 버스 운행 여부는 카카오맵에서 확인해 주세요.',
+    pathUnavailable: '점선은 출발지와 도착지를 연결한 선입니다. 상세 경로는 카카오맵에서 확인해 주세요.',
     routeSteps: '경로 안내',
-    noRoute: '경로 없음'
+    noRoute: '경로 확인 필요'
   },
   ai: {
     narration: 'AI 해설',
@@ -231,9 +233,11 @@ export const messages: Record<Lang, MessagesShape> = {
       toll: 'Toll ₩{fare}',
       durationHours: '{h} h {m} min',
       durationMinutes: '{m} min',
-      estimateTag: 'Straight-line estimate',
+      estimateTag: 'Direct distance',
+      routeUnavailable: 'Only the direct distance is available. Check travel time and transit service in Kakao Map.',
+      pathUnavailable: 'The dashed line joins the endpoints. Check the actual route in Kakao Map.',
       routeSteps: 'Route steps',
-      noRoute: 'No route'
+      noRoute: 'Check route'
     },
     ai: {
       narration: 'AI narration',
@@ -348,9 +352,11 @@ export const messages: Record<Lang, MessagesShape> = {
       toll: '通行料{fare}ウォン',
       durationHours: '{h}時間{m}分',
       durationMinutes: '{m}分',
-      estimateTag: '直線予想',
+      estimateTag: '直線距離',
+      routeUnavailable: '実際の経路を確認できないため直線距離のみ表示します。所要時間とバス運行はカカオマップで確認してください。',
+      pathUnavailable: '点線は出発地と目的地を結ぶ線です。実際の経路はカカオマップで確認してください。',
       routeSteps: '経路案内',
-      noRoute: '経路なし'
+      noRoute: '経路要確認'
     },
     ai: {
       narration: 'AI解説',
@@ -465,9 +471,11 @@ export const messages: Record<Lang, MessagesShape> = {
       toll: '过路费{fare}韩元',
       durationHours: '{h}小时{m}分钟',
       durationMinutes: '{m}分钟',
-      estimateTag: '直线预估',
+      estimateTag: '直线距离',
+      routeUnavailable: '无法确认实际路线，仅显示直线距离。请在 Kakao 地图中确认时间和公交运营情况。',
+      pathUnavailable: '虚线连接起点和终点，请在 Kakao 地图中确认实际路线。',
       routeSteps: '路线指引',
-      noRoute: '无路线'
+      noRoute: '请确认路线'
     },
     ai: {
       narration: 'AI讲解',

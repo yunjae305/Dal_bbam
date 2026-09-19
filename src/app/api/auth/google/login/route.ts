@@ -1,9 +1,12 @@
 import { createSupabaseServerClient } from '@/backend/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthProviderCapabilities } from '@/backend/auth/providers';
+import { safeNextPath } from '@/shared/auth-navigation';
 
 function unavailable(request: NextRequest, error: string) {
-  const response = NextResponse.redirect(new URL(`/login?error=${error}`, request.url));
+  const target = new URL(`/login?error=${error}`, request.url);
+  target.searchParams.set('next', safeNextPath(request.nextUrl.searchParams.get('next')));
+  const response = NextResponse.redirect(target);
   response.headers.set('Cache-Control', 'no-store');
   return response;
 }
@@ -27,7 +30,7 @@ export async function GET(request: NextRequest) {
   }
 
   const callback = new URL('/api/auth/callback', publicOrigin(request));
-  callback.searchParams.set('next', '/');
+  callback.searchParams.set('next', safeNextPath(request.nextUrl.searchParams.get('next')));
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: 'google',
     options: { redirectTo: callback.toString(), skipBrowserRedirect: true }
