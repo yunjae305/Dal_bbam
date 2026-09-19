@@ -51,6 +51,16 @@ function placeCategory(result: KakaoPlaceResult): PlaceCategory {
   return 'attraction';
 }
 
+/**
+ * Kakao results keep their own wording. Forcing them into the app's seven
+ * categories labelled a forklift dealer "관광지"; the provider's own leaf
+ * category ("지게차수리") tells the traveler what the place actually is.
+ */
+function kakaoCategoryLabel(place: MapPlace): string | null {
+  if (!place.kakaoPlaceId) return null;
+  return place.tags.at(-1) ?? null;
+}
+
 function toMapPlace(result: KakaoPlaceResult): MapPlace {
   const address = result.roadAddress || result.address;
   return {
@@ -205,7 +215,7 @@ export function MapPageScreen({ places }: { places: Place[] }) {
               <div className="min-w-0">
                 <button type="button" onClick={() => setSelectedId(place.contentId)} className="block w-full text-left">
                   <strong className="block truncate text-[12px]">{place.name}</strong>
-                  <span className="mt-1 block truncate text-[9px] text-[#76807d]">{messages.categories[place.category]} · {place.address}</span>
+                  <span className="mt-1 block truncate text-[9px] text-[#76807d]">{kakaoCategoryLabel(place) ?? messages.categories[place.category]} · {place.address}</span>
                 </button>
                 {place.kakaoPlaceUrl ? (
                   <a href={place.kakaoPlaceUrl} target="_blank" rel="noreferrer" className="mt-2 inline-block text-[9px] font-black text-[#2f7567]">{messages.map.kakaoDetail} →</a>

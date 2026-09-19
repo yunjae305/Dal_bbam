@@ -133,4 +133,17 @@ describe('MapPageScreen Kakao search', () => {
     expect(url).toContain('north=36');
     expect(url).toContain('east=129.4');
   });
+
+  it('labels a Kakao business with the provider category instead of calling it an attraction', async () => {
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ data: { places: [{
+      ...kakaoPayload.data.places[0], id: '456', name: '강산불국사지게차',
+      categoryName: '가정,생활 > 개인,가정용품수리 > 지게차수리', categoryGroupCode: '', categoryGroupName: ''
+    }] } }) });
+    render(<MapPageScreen places={[place]} />);
+    fireEvent.change(screen.getByLabelText('장소 검색'), { target: { value: '불국사' } });
+    fireEvent.click(screen.getByRole('button', { name: '카카오 장소 검색' }));
+
+    expect(await screen.findByText(/지게차수리 · 경북 경주시/)).toBeInTheDocument();
+    expect(screen.queryByText(/관광지 · 경북 경주시/)).not.toBeInTheDocument();
+  });
 });

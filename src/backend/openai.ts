@@ -181,7 +181,7 @@ export type ModerationResult = {
   allowed: boolean;
   flagged: boolean;
   categories: Record<string, boolean>;
-  provider: 'openai' | 'local';
+  provider: 'openai' | 'gemini' | 'local';
 };
 
 const emailPattern = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i;

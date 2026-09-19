@@ -104,6 +104,10 @@ const ko = {
     routeUnavailable: '실제 경로를 확인하지 못해 직선거리만 표시합니다. 소요 시간과 버스 운행 여부는 카카오맵에서 확인해 주세요.',
     pathUnavailable: '점선은 출발지와 도착지를 연결한 선입니다. 상세 경로는 카카오맵에서 확인해 주세요.',
     routeSteps: '경로 안내',
+    zoomIn: '지도 확대',
+    zoomOut: '지도 축소',
+    arriveBy: '{time} 도착 예정',
+    stepOnMap: '{step}번 지점 지도에서 보기',
     noRoute: '경로 확인 필요'
   },
   ai: {
@@ -237,6 +241,10 @@ export const messages: Record<Lang, MessagesShape> = {
       routeUnavailable: 'Only the direct distance is available. Check travel time and transit service in Kakao Map.',
       pathUnavailable: 'The dashed line joins the endpoints. Check the actual route in Kakao Map.',
       routeSteps: 'Route steps',
+      zoomIn: 'Zoom in',
+      zoomOut: 'Zoom out',
+      arriveBy: 'Arrive by {time}',
+      stepOnMap: 'Show step {step} on the map',
       noRoute: 'Check route'
     },
     ai: {
@@ -356,6 +364,10 @@ export const messages: Record<Lang, MessagesShape> = {
       routeUnavailable: '実際の経路を確認できないため直線距離のみ表示します。所要時間とバス運行はカカオマップで確認してください。',
       pathUnavailable: '点線は出発地と目的地を結ぶ線です。実際の経路はカカオマップで確認してください。',
       routeSteps: '経路案内',
+      zoomIn: '地図を拡大',
+      zoomOut: '地図を縮小',
+      arriveBy: '{time} 到着予定',
+      stepOnMap: '{step}番地点を地図で見る',
       noRoute: '経路要確認'
     },
     ai: {
@@ -475,6 +487,10 @@ export const messages: Record<Lang, MessagesShape> = {
       routeUnavailable: '无法确认实际路线，仅显示直线距离。请在 Kakao 地图中确认时间和公交运营情况。',
       pathUnavailable: '虚线连接起点和终点，请在 Kakao 地图中确认实际路线。',
       routeSteps: '路线指引',
+      zoomIn: '放大地图',
+      zoomOut: '缩小地图',
+      arriveBy: '预计 {time} 到达',
+      stepOnMap: '在地图上查看第 {step} 个地点',
       noRoute: '请确认路线'
     },
     ai: {

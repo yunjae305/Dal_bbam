@@ -59,7 +59,9 @@ export async function checkRelease(env, options = {}, dependencies = {}) {
   }
 
   const probe = await (dependencies.probeProviders ?? probeProviders)(env);
-  const required = ['database', 'tourApi', 'kakao', ...(env.FEATURE_AI?.trim().toLowerCase() === 'true' ? ['openai'] : [])];
+  // The AI slot is whichever provider is configured: Gemini when its key is set.
+  const aiProvider = env.GEMINI_API_KEY?.trim() ? 'gemini' : 'openai';
+  const required = ['database', 'tourApi', 'kakao', ...(env.FEATURE_AI?.trim().toLowerCase() === 'true' ? [aiProvider] : [])];
   for (const name of required) {
     const value = probe?.providers?.[name];
     report.providers[name] = providerSummary(value);

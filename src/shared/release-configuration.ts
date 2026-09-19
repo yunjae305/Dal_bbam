@@ -84,8 +84,8 @@ export function validateReleaseConfiguration(env: ReleaseEnvironment) {
   const aiFlag = env.FEATURE_AI?.trim().toLowerCase();
   if (!['true', 'false'].includes(aiFlag ?? '')) {
     add('AI_MODE_REQUIRED', ['FEATURE_AI'], 'AI 사용 여부를 true 또는 false로 명시하세요. 키를 쓰지 않으면 기본 추천으로 동작합니다.');
-  } else if (aiFlag === 'true' && !env.OPENAI_API_KEY?.trim()) {
-    add('AI_KEY_REQUIRED', ['OPENAI_API_KEY'], 'AI를 켠 상태에는 서버용 OpenAI API 키가 필요합니다.');
+  } else if (aiFlag === 'true' && !env.GEMINI_API_KEY?.trim() && !env.OPENAI_API_KEY?.trim()) {
+    add('AI_KEY_REQUIRED', ['GEMINI_API_KEY', 'OPENAI_API_KEY'], 'AI를 켠 상태에는 서버용 Gemini 또는 OpenAI API 키가 필요합니다.');
   }
   return { ready: issues.length === 0, issues };
 }

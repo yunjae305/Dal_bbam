@@ -112,6 +112,26 @@ function openAiFailureReason(status: number): ProviderReadiness['reason'] {
   return 'unreachable';
 }
 
+/** Gemini is the configured AI provider; OpenAI stays as the fallback path. */
+async function checkGemini(): Promise<ProviderReadiness> {
+  const startedAt = Date.now();
+  const key = process.env.GEMINI_API_KEY?.trim();
+  if (!key) return result(false, startedAt, false, 'not_configured');
+
+  const model = process.env.GEMINI_TEXT_MODEL?.trim() || 'gemini-3.1-flash-lite';
+  try {
+    const response = await fetchWithTimeout(
+      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}`,
+      { headers: { 'x-goog-api-key': key, Accept: 'application/json' }, cache: 'no-store' }
+    );
+    return response.ok
+      ? result(true, startedAt, true)
+      : result(true, startedAt, false, openAiFailureReason(response.status));
+  } catch {
+    return result(true, startedAt, false, 'unreachable');
+  }
+}
+
 async function checkOpenAi(): Promise<ProviderReadiness> {
   const startedAt = Date.now();
   const key = process.env.OPENAI_API_KEY?.trim();
@@ -139,11 +159,12 @@ export async function getReadinessSnapshot(options?: { force?: boolean }): Promi
     return cached.value;
   }
 
+  // One AI provider is checked: Gemini when its key is set, OpenAI otherwise.
   const [database, tourApi, kakao, openai] = await Promise.all([
     checkDatabase(),
     checkTourApi(),
     checkKakao(),
-    checkOpenAi()
+    process.env.GEMINI_API_KEY?.trim() ? checkGemini() : checkOpenAi()
   ]);
   const value = {
     checkedAt: new Date().toISOString(),

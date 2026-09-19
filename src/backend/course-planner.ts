@@ -1,5 +1,5 @@
 import { distanceMeters } from '@/backend/geo';
-import { generateStructured, isOpenAiAvailable } from '@/backend/openai';
+import { generateStructured, isAiAvailable } from '@/backend/ai';
 import { resolveDirections } from '@/backend/kakao-directions';
 import { courseLegKey, timeCourseStops, type CourseLeg } from '@/backend/course-timing';
 import { GYEONGJU_CENTER } from '@/backend/kakao-map';
@@ -238,12 +238,31 @@ export function validateAiCourse(
   );
 }
 
+/** Upper bound on places sent to the model: the whole catalogue would be ~540 rows of prompt. */
+const AI_CANDIDATE_LIMIT = 40;
+
+/**
+ * The model only has to choose and explain, so it receives the best-matching places
+ * with just the fields it needs. Sending every place with its description and image
+ * URL multiplied the token bill without improving the route.
+ */
+export function shortlistForAi(request: CourseRequest, candidates: PlaceSummary[]): PlaceSummary[] {
+  const pool = withinWalkingReach(candidates, request);
+  return [...pool]
+    .sort((a, b) =>
+      interestScore(b, request) - interestScore(a, request) ||
+      a.name.length - b.name.length ||
+      a.name.localeCompare(b.name, 'ko'))
+    .slice(0, AI_CANDIDATE_LIMIT);
+}
+
 export async function createCoursePlan(
   request: CourseRequest,
   candidates: PlaceSummary[],
   actorKey: string
 ): Promise<CoursePlan> {
-  if (!isOpenAiAvailable()) return withMapTiming(deterministicCoursePlan(request, candidates), request);
+  if (!isAiAvailable()) return withMapTiming(deterministicCoursePlan(request, candidates), request);
+  const shortlist = shortlistForAi(request, candidates);
   try {
     const result = await generateStructured<AiCourse>({
       name: 'tour_course',
@@ -256,17 +275,27 @@ export async function createCoursePlan(
         'Choose a realistic number of stops for the requested days and pace.',
         'Give a concise recommendation reason and stay time for each stop.'
       ].join(' '),
-      input: JSON.stringify({ request, candidates })
+      input: JSON.stringify({
+        request,
+        candidates: shortlist.map(place => ({
+          contentId: place.contentId,
+          name: place.name,
+          category: place.category,
+          lat: Number(place.coordinates[0].toFixed(5)),
+          lng: Number(place.coordinates[1].toFixed(5))
+        }))
+      })
     });
-    const validated = validateAiCourse(result.value, request, candidates);
-    if (!validated) throw new Error('OpenAI course failed server validation.');
+    const validated = validateAiCourse(result.value, request, shortlist);
+    if (!validated) throw new Error('AI course failed server validation.');
     return withMapTiming(validated, request);
-  } catch {
+  } catch (error) {
     console.info(JSON.stringify({
-      event: 'openai_fallback',
+      event: 'ai_course_fallback',
       operation: 'tour_course',
-      candidateCount: candidates.length,
-      lang: request.lang
+      candidateCount: shortlist.length,
+      lang: request.lang,
+      reason: error instanceof Error ? error.message.slice(0, 200) : 'unknown'
     }));
     return withMapTiming(deterministicCoursePlan(request, candidates), request);
   }

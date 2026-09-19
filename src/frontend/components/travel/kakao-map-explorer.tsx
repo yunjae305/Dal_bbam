@@ -8,7 +8,9 @@ import {
   Crosshair,
   ExternalLink,
   MapPin,
+  Minus,
   Navigation,
+  Plus,
   RotateCw,
   Search,
   ShieldCheck,
@@ -39,6 +41,8 @@ type KakaoLatLngBounds = {
 type KakaoMap = {
   panTo: (position: KakaoLatLng) => void;
   setBounds: (bounds: KakaoLatLngBounds) => void;
+  setLevel: (level: number, options?: { animate?: boolean }) => void;
+  getLevel: () => number;
   getBounds: () => {
     getSouthWest: () => KakaoLatLngPoint;
     getNorthEast: () => KakaoLatLngPoint;
@@ -167,7 +171,7 @@ export function KakaoMapExplorer({
   onSearchArea?: (bounds: MapBounds) => void | Promise<void>;
   searchAreaLoading?: boolean;
 }) {
-  const { messages } = useLocale();
+  const { locale, messages } = useLocale();
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<KakaoMap | null>(null);
   const onSelectRef = useRef(onSelect);
@@ -195,6 +199,8 @@ export function KakaoMapExplorer({
   const [destination, setDestination] = useState<RoutePoint | null>(null);
   const [picking, setPicking] = useState<RouteEndpoint | null>(null);
   const [comparison, setComparison] = useState<DirectionComparison | null>(null);
+  // When the routes arrived, so the arrival time is computed from data rather than during render.
+  const [routeFetchedAt, setRouteFetchedAt] = useState(0);
   const [routeLoading, setRouteLoading] = useState(false);
   const [routeError, setRouteError] = useState('');
   const [activeMode, setActiveMode] = useState<DirectionMode | null>(null);
@@ -218,6 +224,7 @@ export function KakaoMapExplorer({
     routeRequestRef.current += 1;
     removePolyline();
     setComparison(null);
+    setRouteFetchedAt(0);
     setRouteLoading(false);
     setRouteError('');
     setStepsOpen(false);
@@ -479,6 +486,7 @@ export function KakaoMapExplorer({
       const next = payload.data as DirectionComparison;
       const results = Array.isArray(next?.results) ? next.results : [];
       setComparison({ ...next, results });
+      setRouteFetchedAt(Date.now());
       setActiveMode(current => current && results.some(result => result.mode === current)
         ? current
         : pickDefaultMode(results));
@@ -704,9 +712,15 @@ export function KakaoMapExplorer({
   };
   const showRoutePanel = Boolean(selectedPlace || origin || destination);
   const estimated = directions ? isFallbackDirection(directions) : false;
+  // A map app tells you when you would arrive, not just how long it takes.
+  const arrivalLabel = directions && routeFetchedAt && !estimated && directions.durationSeconds > 0
+    ? messages.map.arriveBy.replace('{time}', new Date(routeFetchedAt + directions.durationSeconds * 1000)
+      .toLocaleTimeString(locale === 'ko' ? 'ko-KR' : locale, { hour: '2-digit', minute: '2-digit' }))
+    : '';
   const summaryParts = directions ? [
     `${estimated ? `${messages.map.estimateTag} ` : ''}${formatDistance(directions.distanceMeters)}`,
     estimated ? '' : formatRouteDuration(directions.durationSeconds, durationTemplates),
+    arrivalLabel,
     typeof directions.summary?.transfers === 'number'
       ? messages.map.transfers.replace('{count}', String(directions.summary.transfers))
       : '',
@@ -786,17 +800,39 @@ export function KakaoMapExplorer({
         </div>
       )}
 
-      <button
-        type="button"
-        onClick={() => void requestLocation()}
-        className="absolute right-4 top-[60px] z-20 grid h-10 w-10 place-items-center rounded-full bg-white text-[#2f7567] shadow-lg"
-        aria-label={messages.map.currentLocation}
-      >
-        <Crosshair size={19} />
-      </button>
+      <div className="absolute left-4 top-4 z-20 flex gap-2">
+        <button
+          type="button"
+          onClick={() => void requestLocation()}
+          className="grid h-10 w-10 place-items-center rounded-full bg-white text-[#2f7567] shadow-lg"
+          aria-label={messages.map.currentLocation}
+        >
+          <Crosshair size={19} />
+        </button>
+        {mapAvailable && (
+          <>
+            <button
+              type="button"
+              onClick={() => { const map = mapRef.current; if (map) map.setLevel(Math.max(1, map.getLevel() - 1), { animate: true }); }}
+              className="grid h-10 w-10 place-items-center rounded-full bg-white text-[#2f7567] shadow-lg"
+              aria-label={messages.map.zoomIn}
+            >
+              <Plus size={17} />
+            </button>
+            <button
+              type="button"
+              onClick={() => { const map = mapRef.current; if (map) map.setLevel(Math.min(14, map.getLevel() + 1), { animate: true }); }}
+              className="grid h-10 w-10 place-items-center rounded-full bg-white text-[#2f7567] shadow-lg"
+              aria-label={messages.map.zoomOut}
+            >
+              <Minus size={17} />
+            </button>
+          </>
+        )}
+      </div>
 
       {showRoutePanel && (
-        <div className="absolute bottom-[84px] left-4 right-4 z-20 max-h-[calc(100%-120px)] overflow-y-auto rounded-2xl bg-white/95 p-3 shadow-xl backdrop-blur">
+        <div className="absolute bottom-[84px] left-4 right-4 z-20 max-h-[calc(100%-148px)] overflow-y-auto rounded-2xl bg-white/95 p-3 shadow-xl backdrop-blur">
           {selectedPlace && (
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0">
@@ -903,12 +939,26 @@ export function KakaoMapExplorer({
           {directions && stepsOpen && directions.steps && directions.steps.length > 0 && (
             <ol className="mt-2 max-h-28 space-y-1 overflow-y-auto rounded-xl bg-[#f7f4ef] px-3 py-2 text-[9px] leading-4 text-[#4f5754]">
               {directions.steps.map((step, index) => (
-                <li key={`${index}-${step.guidance}`} className="flex gap-2">
-                  <span className="shrink-0 font-black text-[#2f7567]">{index + 1}</span>
-                  <span className="min-w-0 flex-1">{step.guidance}</span>
-                  {typeof step.durationSeconds === 'number' && step.durationSeconds > 0 && (
-                    <span className="shrink-0 tabular-nums text-[#8a918e]">{formatRouteDuration(step.durationSeconds, durationTemplates)}</span>
-                  )}
+                <li key={`${index}-${step.guidance}`}>
+                  <button
+                    type="button"
+                    disabled={!step.coordinates}
+                    onClick={() => {
+                      const maps = window.kakao?.maps;
+                      const map = mapRef.current;
+                      if (!maps || !map || !step.coordinates) return;
+                      map.setLevel(Math.min(map.getLevel(), 4), { animate: true });
+                      map.panTo(new maps.LatLng(step.coordinates[0], step.coordinates[1]));
+                    }}
+                    aria-label={messages.map.stepOnMap.replace('{step}', String(index + 1))}
+                    className="flex w-full gap-2 text-left disabled:cursor-default"
+                  >
+                    <span className="shrink-0 font-black text-[#2f7567]">{index + 1}</span>
+                    <span className="min-w-0 flex-1">{step.guidance}</span>
+                    {typeof step.durationSeconds === 'number' && step.durationSeconds > 0 && (
+                      <span className="shrink-0 tabular-nums text-[#8a918e]">{formatRouteDuration(step.durationSeconds, durationTemplates)}</span>
+                    )}
+                  </button>
                 </li>
               ))}
             </ol>

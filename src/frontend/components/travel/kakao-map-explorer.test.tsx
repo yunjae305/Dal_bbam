@@ -12,6 +12,7 @@ vi.mock('@/frontend/location-consent', () => ({
 
 vi.mock('@/frontend/i18n/locale-context', () => ({
   useLocale: () => ({
+    locale: 'ko',
     messages: {
       common: { close: '닫기', retry: '다시 시도' },
       map: {
@@ -27,7 +28,9 @@ vi.mock('@/frontend/i18n/locale-context', () => ({
         cancel: '취소', routeComparing: '경로를 비교하는 중…', routeCompareFailed: '경로 실패',
         selectBoth: '출발지와 도착지를 모두 선택해 주세요.', transfers: '환승 {count}회',
         fare: '요금 {fare}원', toll: '통행료 {fare}원', durationHours: '{h}시간 {m}분',
-        durationMinutes: '{m}분', estimateTag: '직선 예상', routeSteps: '경로 안내', noRoute: '경로 없음'
+        durationMinutes: '{m}분', estimateTag: '직선 예상', routeSteps: '경로 안내', noRoute: '경로 없음',
+        zoomIn: '지도 확대', zoomOut: '지도 축소',
+        arriveBy: '{time} 도착 예정', stepOnMap: '{step}번 지점 지도에서 보기'
       }
     }
   })
@@ -72,7 +75,7 @@ function comparisonPayload() {
         routeResult('walking', 1500),
         routeResult('public', 4200, { summary: { transfers: 1, fareWon: 1450 } }),
         routeResult('bicycle', 600),
-        routeResult('car', 300, { steps: [{ guidance: '우회전', durationSeconds: 60 }] })
+        routeResult('car', 300, { steps: [{ guidance: '우회전', durationSeconds: 60, coordinates: [35.8400, 129.2200] }] })
       ]
     }
   };
@@ -91,6 +94,8 @@ function installKakaoMock() {
   const map = {
     panTo: vi.fn(),
     setBounds: vi.fn(),
+    setLevel: vi.fn(),
+    getLevel: () => 5,
     getBounds: () => ({
       getSouthWest: () => ({ getLat: () => 35.7, getLng: () => 129 }),
       getNorthEast: () => ({ getLat: () => 36, getLng: () => 129.4 })
@@ -280,5 +285,37 @@ describe('KakaoMapExplorer route state', () => {
     );
     await waitFor(() => expect(refreshedLine.setMap).toHaveBeenCalledWith(null));
     await waitFor(() => expect(kakao.event.removeListener).toHaveBeenCalled());
+  });
+
+  it('shows when the traveler would arrive and moves the map to a chosen turn', async () => {
+    const { map } = installKakaoMock();
+    vi.mocked(readLocationConsent).mockResolvedValue(true);
+    installGeolocation(() => ({ latitude: 35.8562, longitude: 129.2247 }));
+    fetchMock.mockResolvedValue({ ok: true, json: async () => comparisonPayload() });
+
+    render(<KakaoMapExplorer places={[firstPlace]} selectedPlace={firstPlace} onSelect={vi.fn()} />);
+    fireEvent.click(await screen.findByRole('button', { name: '현재 위치' }));
+
+    // 자동차 5분 뒤 도착 시각이 함께 보인다.
+    const arrival = new Date(Date.now() + 300 * 1000).toLocaleTimeString('ko', { hour: '2-digit', minute: '2-digit' });
+    expect(await screen.findByText(new RegExp(`${arrival} 도착 예정`))).toBeVisible();
+
+    fireEvent.click(screen.getByRole('button', { name: '경로 안내' }));
+    const step = await screen.findByRole('button', { name: '1번 지점 지도에서 보기' });
+    fireEvent.click(step);
+    expect(map.panTo).toHaveBeenCalled();
+  });
+
+  it('lets the traveler zoom and return to their own location', async () => {
+    const { map } = installKakaoMock();
+    vi.mocked(readLocationConsent).mockResolvedValue(true);
+    installGeolocation(() => ({ latitude: 35.8562, longitude: 129.2247 }));
+    render(<KakaoMapExplorer places={[firstPlace]} selectedPlace={firstPlace} onSelect={vi.fn()} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: '지도 확대' }));
+    fireEvent.click(screen.getByRole('button', { name: '지도 축소' }));
+    expect(map.setLevel).toHaveBeenCalledWith(4, { animate: true });
+    expect(map.setLevel).toHaveBeenCalledWith(6, { animate: true });
+    expect(screen.getByRole('button', { name: '현재 위치' })).toBeVisible();
   });
 });

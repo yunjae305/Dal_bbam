@@ -30,7 +30,10 @@ export async function verifyProviders({ env = process.env, fetcher = fetch } = {
     if (!response.ok) throw Object.assign(new Error('Provider HTTP failure'), { code: `HTTP_${response.status}` });
     return response;
   }
-  if (!aiEnabled) providers.openai = { configured: Boolean(env.OPENAI_API_KEY?.trim()), required: false, operational: false, skipped: true, reason: 'feature_disabled' };
+  if (!aiEnabled) {
+    const name = env.GEMINI_API_KEY?.trim() ? 'gemini' : 'openai';
+    providers[name] = { configured: Boolean(env.GEMINI_API_KEY?.trim() || env.OPENAI_API_KEY?.trim()), required: false, operational: false, skipped: true, reason: 'feature_disabled' };
+  }
   await Promise.all([
     probe('database', env.NEXT_PUBLIC_SUPABASE_URL?.trim() && env.SUPABASE_SECRET_KEY?.trim(), async () => {
       const details = await inspectDatabaseReadiness({
@@ -57,7 +60,11 @@ export async function verifyProviders({ env = process.env, fetcher = fetch } = {
       const directions = await verifyKakaoRoutes({ key: env.KAKAO_REST_API_KEY, fetcher });
       return { directions, operational: Object.values(directions).every(route => route.operational) };
     }),
-    ...(aiEnabled ? [probe('openai', env.OPENAI_API_KEY?.trim(), async () => {
+    // Gemini is the configured AI provider; the OpenAI probe stays for environments still on it.
+    ...(aiEnabled && env.GEMINI_API_KEY?.trim() ? [probe('gemini', env.GEMINI_API_KEY?.trim(), async () => {
+      await request(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(env.GEMINI_TEXT_MODEL || 'gemini-3.1-flash-lite')}`, { 'x-goog-api-key': env.GEMINI_API_KEY });
+    })] : []),
+    ...(aiEnabled && !env.GEMINI_API_KEY?.trim() ? [probe('openai', env.OPENAI_API_KEY?.trim(), async () => {
       await request(`https://api.openai.com/v1/models/${encodeURIComponent(env.OPENAI_TEXT_MODEL || 'gpt-5.6-terra')}`, { Authorization: `Bearer ${env.OPENAI_API_KEY}` });
     })] : [])
   ]);

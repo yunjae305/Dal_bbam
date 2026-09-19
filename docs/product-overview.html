@@ -1,0 +1,463 @@
+<title>달밤 · 경주 여행 PWA</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans+KR:wght@300;400;600;700&display=swap">
+<style>
+  :root {
+    --ink: #12372f;
+    --ink-soft: #3d534c;
+    --paper: #f1f4f0;
+    --card: #ffffff;
+    --line: #d5ddd6;
+    --moss: #2f7567;
+    --clay: #b94f4a;
+    --muted: #5f6d67;
+    --shadow: 0 1px 2px rgba(18, 55, 47, .06), 0 12px 32px rgba(18, 55, 47, .07);
+    --display: 'Gowun Batang', 'Nanum Myeongjo', 'Apple SD Gothic Neo', serif;
+    --body: 'IBM Plex Sans KR', 'Malgun Gothic', system-ui, sans-serif;
+    --mono: 'IBM Plex Mono', 'D2Coding', ui-monospace, monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ink: #e8efe9;
+      --ink-soft: #b4c4bc;
+      --paper: #0d1714;
+      --card: #14211d;
+      --line: #27403a;
+      --moss: #63b39f;
+      --clay: #e08078;
+      --muted: #8ea099;
+      --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 14px 34px rgba(0, 0, 0, .35);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --ink: #e8efe9;
+    --ink-soft: #b4c4bc;
+    --paper: #0d1714;
+    --card: #14211d;
+    --line: #27403a;
+    --moss: #63b39f;
+    --clay: #e08078;
+    --muted: #8ea099;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 14px 34px rgba(0, 0, 0, .35);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--body);
+    font-weight: 400;
+    font-size: 16px;
+    line-height: 1.75;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .page {
+    max-width: 960px;
+    margin: 0 auto;
+    padding-inline: 20px;
+    padding-block: 56px 96px;
+    display: flex;
+    flex-direction: column;
+    gap: 72px;
+  }
+
+  h1, h2, h3 { font-family: var(--display); font-weight: 700; text-wrap: balance; margin: 0; }
+  p { margin: 0; }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: .18em;
+    text-transform: uppercase;
+    color: var(--moss);
+  }
+
+  /* ── 표지 ───────────────────────────────── */
+  .cover { display: flex; flex-direction: column; gap: 20px; }
+  .cover h1 { font-size: clamp(38px, 7vw, 62px); line-height: 1.12; letter-spacing: -.01em; }
+  .cover h1 em { font-style: normal; color: var(--moss); }
+  .thesis { font-size: clamp(17px, 2.2vw, 20px); line-height: 1.7; max-width: 60ch; color: var(--ink-soft); }
+  .cover-meta { display: flex; flex-wrap: wrap; gap: 10px 22px; align-items: baseline; font-size: 13px; color: var(--muted); }
+  .cover-meta a { color: var(--clay); font-weight: 600; text-decoration-thickness: 1px; text-underline-offset: 3px; }
+
+  /* ── 숫자 띠 ─────────────────────────────── */
+  .figures {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 1px;
+    background: var(--line);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .figure { background: var(--card); padding: 18px 20px; display: flex; flex-direction: column; gap: 4px; }
+  .figure b { font-family: var(--mono); font-size: 26px; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1.1; }
+  .figure span { font-size: 12px; color: var(--muted); }
+
+  /* ── 섹션 ───────────────────────────────── */
+  section { display: flex; flex-direction: column; gap: 26px; }
+  .section-head { display: flex; flex-direction: column; gap: 10px; border-top: 2px solid var(--ink); padding-top: 14px; }
+  .section-head h2 { font-size: clamp(25px, 3.4vw, 33px); }
+  .section-head p { color: var(--ink-soft); max-width: 64ch; }
+
+  /* ── 대상 사용자 ─────────────────────────── */
+  .audience { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 18px; }
+  .audience article { display: flex; flex-direction: column; gap: 8px; padding-left: 16px; border-left: 3px solid var(--moss); }
+  .audience h3 { font-size: 18px; }
+  .audience .who { font-size: 13px; color: var(--muted); }
+  .audience p { font-size: 14.5px; line-height: 1.65; }
+
+  .principles { display: flex; flex-direction: column; gap: 12px; margin: 0; padding: 0; list-style: none; counter-reset: rule; }
+  .principles li {
+    display: grid;
+    grid-template-columns: 30px 1fr;
+    gap: 14px;
+    align-items: baseline;
+    font-size: 15px;
+  }
+  .principles li::before {
+    counter-increment: rule;
+    content: counter(rule, decimal-leading-zero);
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--clay);
+  }
+  .principles b { font-weight: 600; }
+
+  /* ── 기능 ───────────────────────────────── */
+  .features { display: flex; flex-direction: column; gap: 0; }
+  .feature {
+    display: grid;
+    grid-template-columns: 210px 1fr;
+    gap: 28px;
+    padding-block: 26px;
+    border-top: 1px solid var(--line);
+  }
+  .feature:last-child { border-bottom: 1px solid var(--line); }
+  .feature-id { display: flex; flex-direction: column; gap: 8px; }
+  .feature-id h3 { font-size: 20px; line-height: 1.3; }
+  .code {
+    align-self: flex-start;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: .06em;
+    color: var(--moss);
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    padding: 2px 7px;
+    white-space: nowrap;
+  }
+  .feature-body { display: flex; flex-direction: column; gap: 14px; }
+  .feature-body ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; font-size: 15px; }
+  .why { font-size: 15px; line-height: 1.7; color: var(--ink-soft); border-left: 3px solid var(--clay); padding-left: 14px; }
+  .why b { color: var(--ink); font-weight: 600; }
+  .pending {
+    align-self: flex-start;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--clay);
+    background: color-mix(in srgb, var(--clay) 12%, transparent);
+    border-radius: 3px;
+    padding: 3px 8px;
+  }
+
+  /* ── 표 ─────────────────────────────────── */
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 14.5px; min-width: 460px; }
+  caption { text-align: left; font-size: 13px; color: var(--muted); padding-bottom: 10px; }
+  th, td { text-align: left; padding: 11px 14px 11px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-family: var(--mono); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+  td:first-child { font-weight: 600; white-space: nowrap; padding-right: 22px; }
+  .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+  /* ── 상태 ───────────────────────────────── */
+  .status { display: flex; flex-direction: column; gap: 10px; margin: 0; padding: 0; list-style: none; }
+  .status li { display: grid; grid-template-columns: 78px 1fr; gap: 14px; align-items: baseline; font-size: 15px; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+  .pill {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: .06em;
+    text-align: center;
+    border-radius: 999px;
+    padding: 3px 0;
+    border: 1px solid;
+  }
+  .pill.done { color: var(--moss); border-color: color-mix(in srgb, var(--moss) 45%, transparent); }
+  .pill.todo { color: var(--clay); border-color: color-mix(in srgb, var(--clay) 45%, transparent); }
+
+  .next { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; font-size: 15px; }
+
+  footer { border-top: 2px solid var(--ink); padding-top: 14px; font-size: 13px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 6px 18px; }
+
+  @media (max-width: 720px) {
+    .page { gap: 56px; padding-block: 40px 72px; }
+    .figures { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .feature { grid-template-columns: 1fr; gap: 14px; }
+    .feature-id { flex-direction: row; align-items: center; gap: 10px; flex-wrap: wrap; }
+  }
+</style>
+
+<div class="page">
+
+  <header class="cover">
+    <p class="eyebrow">2026 관광데이터 활용 공모전 · 웹/앱 개발</p>
+    <h1>달밤<br><em>경주의 천 년을 걷는 여행앱</em></h1>
+    <p class="thesis">
+      경주에 온 여행자가 지도앱과 번역앱, 메모장을 오가지 않고 <b>한 화면에서 여행을 끝내도록</b> 만든 모바일 웹앱입니다.
+      관광 정보는 한국관광공사 TourAPI, 지도와 길찾기는 카카오를 씁니다. 설치 없이 브라우저로 쓰고, 원하면 홈 화면에 올립니다.
+    </p>
+    <p class="cover-meta">
+      <span><a href="https://dal-bbam.vercel.app">dal-bbam.vercel.app</a></span>
+      <span>한국어 · English · 日本語 · 中文</span>
+      <span>2026-09-19 기준</span>
+    </p>
+  </header>
+
+  <div class="figures">
+    <div class="figure"><b class="num">545</b><span>TourAPI 관광지</span></div>
+    <div class="figure"><b class="num">4</b><span>지원 언어</span></div>
+    <div class="figure"><b class="num">9</b><span>GPS 스탬프 관광지</span></div>
+    <div class="figure"><b class="num">548</b><span>통과한 자동 테스트</span></div>
+  </div>
+
+  <section>
+    <div class="section-head">
+      <p class="eyebrow">누구를 위한 앱인가</p>
+      <h2>언어와 동선, 두 가지 벽</h2>
+      <p>경주를 찾는 사람은 크게 둘입니다. 읽지 못해서 막히는 사람과, 무엇부터 볼지 정하지 못해 막히는 사람입니다.</p>
+    </div>
+    <div class="audience">
+      <article>
+        <h3>외국인 개별 여행자</h3>
+        <p class="who">FIT · 20~30대 · 동아시아·동남아</p>
+        <p>안내판도 설명문도 한국어입니다. 화면 전체를 네 개 언어로 바꾸고, 문화재는 글보다 사진과 짧은 이야기로 먼저 보여 줍니다.</p>
+      </article>
+      <article>
+        <h3>국내 역사·문화 여행객</h3>
+        <p class="who">30~50대 · 가족·단체</p>
+        <p>가 볼 곳은 정해졌는데 순서가 문제입니다. 조건만 고르면 코스와 시간표가 나오고, 그대로 내 일정이 됩니다.</p>
+      </article>
+      <article>
+        <h3>아이와 함께 온 가족</h3>
+        <p class="who">체험형 여행</p>
+        <p>보는 여행은 금방 지칩니다. 현장에서 GPS로 찍는 스탬프와 배지가 걷는 이유를 만들어 줍니다.</p>
+      </article>
+    </div>
+    <ol class="principles">
+      <li><span><b>다른 앱을 열게 하지 않는다.</b> 검색·지도·길찾기·일정·기록을 한 앱 안에서 끝냅니다.</span></li>
+      <li><span><b>지어내지 않는다.</b> 관광 정보는 공공 데이터 원문을 근거로 하고, AI가 쓴 문장은 그렇다고 밝힙니다.</span></li>
+      <li><span><b>끊겨도 쓸 수 있다.</b> 여행지에서 신호가 약해도 마지막으로 본 관광 정보는 남습니다.</span></li>
+    </ol>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <p class="eyebrow">기능과 그 이유</p>
+      <h2>여덟 개의 화면, 하나의 흐름</h2>
+      <p>요구사항명세서의 여덟 개 모듈을 그대로 화면으로 옮겼습니다. 각 기능마다 무엇을 하는지와, 왜 그렇게 만들었는지를 함께 적었습니다.</p>
+    </div>
+
+    <div class="features">
+
+      <article class="feature">
+        <div class="feature-id">
+          <span class="code">FR-HOME</span>
+          <h3>홈과 카테고리</h3>
+        </div>
+        <div class="feature-body">
+          <ul>
+            <li>문화유산·관광지·맛집·숙박·축제·자연·체험으로 나눈 입구</li>
+            <li>최근 7일 조회수로 집계하는 인기 관광지</li>
+            <li>어느 화면에서나 누르는 언어 전환(한·영·일·중)</li>
+          </ul>
+          <p class="why"><b>왜:</b> 처음 들어온 사람에게 검색어를 떠올리게 하는 앱은 외국인에게 특히 불친절합니다. 무엇부터 볼지를 화면이 먼저 제안합니다. 분류는 TourAPI 코드에 맞춰 두어 데이터가 늘어도 그대로 동작합니다.</p>
+        </div>
+      </article>
+
+      <article class="feature">
+        <div class="feature-id">
+          <span class="code">FR-MAP</span>
+          <h3>지도 · 장소 상세 · 길찾기</h3>
+        </div>
+        <div class="feature-body">
+          <ul>
+            <li>카카오 지도 위 관광지 핀과 군집, 카테고리 필터, 확대·축소·현재 위치</li>
+            <li>검색하면 앱이 가진 관광지를 먼저, 카카오 장소 결과를 뒤에</li>
+            <li><b>도보·대중교통·자전거·자동차를 한 번에 비교</b> — 소요 시간, 거리, 도착 예정 시각, 대중교통 요금과 환승 횟수</li>
+            <li>지도에 그려지는 경로선, 펼쳐 보는 턴바이턴 안내, 안내 한 줄을 누르면 지도가 그 지점으로 이동</li>
+            <li>사진·소개·운영 시간·연락처·리뷰를 담은 장소 상세</li>
+          </ul>
+          <p class="why"><b>왜:</b> 지도는 보여 주되 길찾기는 다른 앱으로 넘기는 여행앱이 많습니다. 하지만 "걸을지 버스를 탈지"는 여행자가 매번 내리는 결정이라, 네 수단을 나란히 놓고 고르게 만든 것이 이 화면의 존재 이유입니다. 실시간 주행 안내처럼 카카오맵 앱이 더 잘하는 일은 같은 경로 그대로 넘겨 줍니다.</p>
+        </div>
+      </article>
+
+      <article class="feature">
+        <div class="feature-id">
+          <span class="code">FR-CART · FR-SCH</span>
+          <h3>장바구니와 내 일정</h3>
+        </div>
+        <div class="feature-body">
+          <ul>
+            <li>마음에 든 곳을 담고, 관광지·맛집·숙소로 분류해서 보기</li>
+            <li>담은 곳을 골라 날짜별 일정으로 보내기</li>
+            <li>장소 추가, 순서 변경, 체류 시간 조정, 시간 재배치, 삭제</li>
+            <li>타임라인과 캘린더 두 가지 보기, 링크 공유</li>
+          </ul>
+          <p class="why"><b>왜:</b> 여행 준비는 고르기 → 묶기 → 순서 정하기의 반복입니다. 그동안 메모장과 지도앱으로 나눠 하던 이 과정을 한 앱에 넣었습니다. 순서를 바꾸면 시간표를 다시 계산해 주는 것도 같은 이유입니다.</p>
+        </div>
+      </article>
+
+      <article class="feature">
+        <div class="feature-id">
+          <span class="code">FR-CRS</span>
+          <h3>코스 추천</h3>
+        </div>
+        <div class="feature-body">
+          <ul>
+            <li>목적·기간·동행·속도·교통수단·관심사를 고르면 나오는 코스</li>
+            <li>저장하면 내 코스가 되고 공유 링크가 생성</li>
+            <li>테마 큐레이션 코스: 신라 천년 역사 · 달빛 야경 산책 · 경주 미식</li>
+          </ul>
+          <p class="why"><b>왜:</b> 처음 오는 사람이 가장 막히는 지점이 동선입니다. 추천은 두 겹으로 만들었습니다. 관심사 배분과 도보 가능 거리, 대표 문화재 우선순위를 따지는 규칙 기반 추천이 바닥에 있고, 그 위에 AI가 장소 선택과 추천 이유를 다듬습니다. AI 결과가 검증을 통과하지 못하면 규칙 기반 결과로 되돌아가므로 <b>추천이 비어서 나오는 경우가 없습니다.</b></p>
+        </div>
+      </article>
+
+      <article class="feature">
+        <div class="feature-id">
+          <span class="code">FR-STAMP</span>
+          <h3>스탬프 투어</h3>
+        </div>
+        <div class="feature-body">
+          <ul>
+            <li>승인된 관광지 9곳에서 GPS로 방문 인증</li>
+            <li>반경 밖이거나 위치 정확도가 낮으면 거절, 현장 QR 체크포인트로 재확인</li>
+            <li>역사·미식 테마를 채우면 배지와 디지털 리워드</li>
+          </ul>
+          <p class="why"><b>왜:</b> 관광지를 "보는 것"에서 "모으는 것"으로 바꾸면 더 오래 머물고 다시 옵니다. 위치를 서버에서 검증하는 것은 집에서 찍는 스탬프를 막기 위해서입니다. 원시 위치 기록은 저장하지 않습니다.</p>
+        </div>
+      </article>
+
+      <article class="feature">
+        <div class="feature-id">
+          <span class="code">FR-COM</span>
+          <h3>여행자 커뮤니티</h3>
+        </div>
+        <div class="feature-body">
+          <ul>
+            <li>사진을 올리는 여행 후기와 꿀팁 게시판</li>
+            <li>맛집·숙소 별점 리뷰, 북마크</li>
+            <li>신고·차단과 관리자 신고 처리 큐</li>
+          </ul>
+          <p class="why"><b>왜:</b> 지금 줄이 긴지, 주차가 되는지 같은 정보는 공공 데이터에 없습니다. 여행자끼리 주고받는 편이 빠릅니다. 대신 올라온 글과 사진은 검사를 거치고, 차단과 신고 처리를 함께 두어 문제 글이 남지 않게 했습니다.</p>
+        </div>
+      </article>
+
+      <article class="feature">
+        <div class="feature-id">
+          <span class="code">FR-SNS</span>
+          <h3>문화재 쇼츠와 방문자 스토리</h3>
+          <span class="pending">영상 추후 추가</span>
+        </div>
+        <div class="feature-body">
+          <ul>
+            <li>세로형 짧은 영상으로 만나는 문화재 — <b>영상 준비 중, 네 개 언어로 안내 표시</b></li>
+            <li>최근 방문자 사진으로 만드는 스토리 초안 (사람이 고쳐서 게시)</li>
+            <li>관리자 등록 화면과 저장된 영상 데이터는 그대로 유지</li>
+          </ul>
+          <p class="why"><b>왜:</b> 문화재 설명문은 잘 읽히지 않지만 짧은 영상과 여행자의 사진은 먼저 눈에 들어옵니다. 영상이 준비되기 전에 빈 피드를 보여 주는 대신 안내를 띄운 것은, 없는 것을 있는 척하지 않기 위해서입니다. 영상을 등록하고 스위치 하나만 켜면 그대로 열립니다.</p>
+        </div>
+      </article>
+
+      <article class="feature">
+        <div class="feature-id">
+          <span class="code">FR-SNS-003</span>
+          <h3>문화재 해설과 음성</h3>
+        </div>
+        <div class="feature-body">
+          <ul>
+            <li>장소 상세에서 읽는 해설과, 눌러서 듣는 음성</li>
+            <li>선택한 언어로 제공, 기기 내장 음성으로 읽기</li>
+          </ul>
+          <p class="why"><b>왜:</b> 해설은 사실이 틀리면 안 되는 영역이라 TourAPI 소개문의 범위를 벗어나지 않게 했습니다. 서버에서 음성 파일을 만드는 대신 기기 음성을 쓰는 것은 비용과 응답 속도 때문입니다.</p>
+        </div>
+      </article>
+
+    </div>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <p class="eyebrow">AI를 쓴 범위</p>
+      <h2>두 곳에만, 가장 저렴한 모델로</h2>
+      <p>AI는 거들 뿐입니다. 사실 관계가 중요한 곳과 결과를 예측할 수 있어야 하는 곳에는 쓰지 않았습니다.</p>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <caption>Gemini 3.1 Flash-Lite · 추론 토큰 0 · 코스 후보는 540곳이 아니라 40곳만 전달</caption>
+        <thead>
+          <tr><th scope="col">기능</th><th scope="col">AI가 하는 일</th><th scope="col">AI가 멈추면</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>코스 추천</td><td>후보 40곳 중 선택, 순서·체류 시간·추천 이유 작성</td><td>규칙 기반 코스가 그대로 나옵니다</td></tr>
+          <tr><td>방문자 스토리</td><td>올린 사진을 보고 1인칭 여행기 초안 작성</td><td>직접 쓰는 글쓰기 화면은 그대로입니다</td></tr>
+          <tr><td>문화재 해설</td><td class="num">— 쓰지 않음</td><td>공공 데이터 원문 기반 해설</td></tr>
+          <tr><td>커뮤니티 검열</td><td class="num">— 쓰지 않음</td><td>키워드·개인정보 규칙 검사</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="why"><b>모델을 이렇게 고른 이유:</b> 실제로 호출할 수 있는 모델 중 요금이 가장 낮습니다(100만 토큰당 입력 $0.25 · 출력 $1.50). 더 싼 이전 세대는 신규 키에 제공되지 않습니다. 해설과 검열을 AI에 맡기지 않은 것은 정확성 때문이기도 하고, 비용과 실패 지점을 줄이기 위해서이기도 합니다.</p>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <p class="eyebrow">어떻게 만들었나</p>
+      <h2>기술 선택과 근거</h2>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th scope="col">영역</th><th scope="col">선택</th><th scope="col">이유</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>앱</td><td>Next.js 16 · React 19 · TypeScript</td><td>키는 서버에서만 다루고, 화면은 모바일 우선으로 그립니다</td></tr>
+          <tr><td>데이터</td><td>Supabase (PostgreSQL · 인증 · 파일 저장소)</td><td>관광지 캐시, 일정·스탬프·커뮤니티, 사진 업로드를 한곳에서</td></tr>
+          <tr><td>관광 데이터</td><td>한국관광공사 TourAPI · 국가유산청</td><td>공모전 필수 데이터이자 모든 정보의 근거</td></tr>
+          <tr><td>지도</td><td>카카오 지도 · 로컬 · 모빌리티</td><td>국내 도보·대중교통 경로 품질과 한국어 지명</td></tr>
+          <tr><td>설치</td><td>PWA (서비스워커 · 매니페스트)</td><td>마켓 심사 없이 홈 화면 설치, 오프라인 대비</td></tr>
+          <tr><td>배포</td><td>Vercel</td><td>올리면 자동 배포, 출시 점검을 통과해야 빌드가 진행됩니다</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="why"><b>보안과 개인정보:</b> 외부 API 키는 모두 서버에만 둡니다. 위치 정보는 동의를 받은 뒤 현재 위치 표시와 스탬프 검증에만 쓰고 원시 기록은 남기지 않습니다. 서비스워커는 공개 관광 정보만 저장하고 일정·장바구니·커뮤니티 같은 개인 데이터는 캐시하지 않습니다.</p>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <p class="eyebrow">2026-09-19 기준</p>
+      <h2>지금 상태와 남은 일</h2>
+    </div>
+    <ul class="status">
+      <li><span class="pill done">완료</span><span>운영 배포 및 출시 전 점검 통과 — dal-bbam.vercel.app</span></li>
+      <li><span class="pill done">완료</span><span>관광지 545건, 스탬프 대상 9곳, 네 개 언어 화면 전환</span></li>
+      <li><span class="pill done">완료</span><span>자동 테스트 548개 · 타입 검사 · 운영 빌드 통과</span></li>
+      <li><span class="pill done">완료</span><span>안드로이드 실기기 검증 — 검색·찜·일정·코스·커뮤니티·스탬프·오프라인</span></li>
+      <li><span class="pill done">완료</span><span>AI 연결 — 코스 추천과 스토리 초안 실제 호출 확인</span></li>
+      <li><span class="pill todo">예정</span><span>쇼츠 영상 제작·등록 후 피드 공개</span></li>
+      <li><span class="pill todo">예정</span><span>관광지 이름·주소 다국어 데이터 보강 (화면은 번역되지만 장소명은 아직 한국어)</span></li>
+      <li><span class="pill todo">예정</span><span>실물 단말 설치 테스트, 로딩 성능 측정, 안드로이드 APK 패키징</span></li>
+    </ul>
+  </section>
+
+  <footer>
+    <span>달밤 · 경주 여행 PWA</span>
+    <span>요구사항명세서(관광) v1.1 기준</span>
+    <span>문서 갱신 2026-09-19</span>
+  </footer>
+
+</div>

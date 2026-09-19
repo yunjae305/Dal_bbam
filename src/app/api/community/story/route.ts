@@ -9,7 +9,7 @@ import {
   parseBody,
   rateLimitError
 } from '@/backend/http';
-import { generateStructured, moderateContent } from '@/backend/openai';
+import { generateStructured, moderateContent } from '@/backend/ai';
 import { isLang } from '@/shared/i18n';
 import { isFeatureEnabled } from '@/backend/features';
 
@@ -70,13 +70,8 @@ export async function POST(request: NextRequest) {
         'Do not identify people, infer identity, or invent the exact location.',
         'Clearly word uncertain visual details as impressions.'
       ].join(' '),
-      input: [{
-        role: 'user',
-        content: [
-          { type: 'input_text', text: body.notes?.slice(0, 500) || 'Create an editable travel story draft.' },
-          { type: 'input_image', image_url: String(media.public_path) }
-        ]
-      }]
+      input: body.notes?.slice(0, 500) || 'Create an editable travel story draft.',
+      imageUrl: String(media.public_path)
     });
     const draft = result.value;
     if (!draft || typeof draft.title !== 'string' || typeof draft.content !== 'string' || !Array.isArray(draft.tags) || draft.tags.some(tag => typeof tag !== 'string')) {

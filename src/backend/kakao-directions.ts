@@ -20,6 +20,9 @@ type KakaoMobilityGuide = {
   guidance?: string;
   distance?: number;
   duration?: number;
+  /** Kakao returns the turn position as x = longitude, y = latitude. */
+  x?: number;
+  y?: number;
 };
 type KakaoMobilityDirections = {
   routes?: Array<{
@@ -240,16 +243,20 @@ async function loadKakaoCarDirections(
   const steps = sections
     .flatMap(section => section.guides ?? [])
     .flatMap(guide => {
-      const guidance = [guide.name, guide.guidance]
+      // Kakao repeats the same word in both fields at the endpoints ("출발지 · 출발지").
+      const guidance = [...new Set([guide.name, guide.guidance]
         .map(value => value?.trim())
-        .filter(Boolean)
+        .filter(Boolean))]
         .join(' · ');
       if (!guidance) return [];
+      const lat = finiteOrUndefined(guide.y);
+      const lng = finiteOrUndefined(guide.x);
       const item: DirectionStep = {
         guidance,
         type: 'CAR',
         distanceMeters: finiteOrUndefined(guide.distance),
-        durationSeconds: finiteOrUndefined(guide.duration)
+        durationSeconds: finiteOrUndefined(guide.duration),
+        ...(lat !== undefined && lng !== undefined ? { coordinates: [lat, lng] as [number, number] } : {})
       };
       return [item];
     })

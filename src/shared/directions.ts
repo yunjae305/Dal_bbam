@@ -7,6 +7,8 @@ export type DirectionStep = {
   type?: string;
   distanceMeters?: number;
   durationSeconds?: number;
+  /** Where the turn happens, so tapping the step can move the map there. */
+  coordinates?: [number, number];
 };
 
 export type DirectionSummary = {

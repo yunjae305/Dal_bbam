@@ -14,7 +14,7 @@ const env = {
 function providers() {
   return { providers: {
     database: { operational: true, reachable: true, schemaReady: true, storageReady: true, contentReady: true },
-    tourApi: { operational: true }, kakao: { operational: true }, openai: { operational: false }
+    tourApi: { operational: true }, kakao: { operational: true }, openai: { operational: false }, gemini: { operational: true }
   } };
 }
 
@@ -71,4 +71,15 @@ test('unexpected deployment origins and write flags are rejected', async () => {
   });
   assert.equal(report.ready, false);
   assert.equal(report.deployedHealth.verified, false);
+});
+
+test('with AI on, the configured Gemini provider is the one that must answer', async () => {
+  const aiEnv = { ...env, FEATURE_AI: 'true', GEMINI_API_KEY: 'test-gemini-key' };
+  const ready = await checkRelease(aiEnv, {}, { probeProviders: () => providers() });
+  assert.equal(ready.issues.length, 0, JSON.stringify(ready.issues));
+
+  const response = providers();
+  response.providers.gemini = { operational: false };
+  const failed = await checkRelease(aiEnv, {}, { probeProviders: () => response });
+  assert.ok(failed.issues.some(issue => issue.code === 'PROVIDER_NOT_READY' && issue.fields.includes('gemini')));
 });
