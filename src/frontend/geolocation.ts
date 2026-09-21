@@ -9,6 +9,7 @@ export type AcquirePositionOptions = {
   maxAccuracyMeters: number;
   timeoutMs?: number;
   onSample?: (sample: PositionSample) => void;
+  signal?: AbortSignal;
 };
 
 export class GeolocationAcquireError extends Error {
@@ -40,9 +41,14 @@ function toSample(position: GeolocationPosition): PositionSample {
 export function acquirePosition({
   maxAccuracyMeters,
   timeoutMs = 15_000,
-  onSample
+  onSample,
+  signal
 }: AcquirePositionOptions): Promise<PositionSample> {
   return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new DOMException('Location request cancelled.', 'AbortError'));
+      return;
+    }
     const geolocation = typeof navigator === 'undefined' ? undefined : navigator.geolocation;
     if (!geolocation) {
       reject(new GeolocationAcquireError('unsupported', 'Geolocation is not supported.'));
@@ -54,14 +60,17 @@ export function acquirePosition({
     let settled = false;
     let lastError: GeolocationPositionError | null = null;
 
-    const finish = (outcome: { sample: PositionSample } | { error: GeolocationAcquireError }) => {
+    const finish = (outcome: { sample: PositionSample } | { error: Error }) => {
       if (settled) return;
       settled = true;
       window.clearTimeout(deadline);
+      signal?.removeEventListener('abort', abort);
       if (watchId !== null) geolocation.clearWatch(watchId);
       if ('sample' in outcome) resolve(outcome.sample);
       else reject(outcome.error);
     };
+
+    const abort = () => finish({ error: new DOMException('Location request cancelled.', 'AbortError') });
 
     const deadline = window.setTimeout(() => {
       if (best) {
@@ -75,23 +84,33 @@ export function acquirePosition({
       });
     }, timeoutMs);
 
-    watchId = geolocation.watchPosition(position => {
-      const sample = toSample(position);
-      if (!Number.isFinite(sample.lat) || !Number.isFinite(sample.lng)) return;
-      onSample?.(sample);
-      if (!best || (Number.isFinite(sample.accuracy) && sample.accuracy < best.accuracy)) best = sample;
-      if (Number.isFinite(sample.accuracy) && sample.accuracy > 0 && sample.accuracy <= maxAccuracyMeters) {
-        finish({ sample });
-      }
-    }, error => {
-      lastError = error;
-      if (error.code === error.PERMISSION_DENIED) {
-        finish({ error: new GeolocationAcquireError('denied', 'Location permission denied.') });
-      }
-    }, {
-      enableHighAccuracy: true,
-      maximumAge: 0,
-      timeout: timeoutMs
-    });
+    signal?.addEventListener('abort', abort, { once: true });
+    try {
+      watchId = geolocation.watchPosition(position => {
+        if (settled) return;
+        const sample = toSample(position);
+        if (!Number.isFinite(sample.lat) || !Number.isFinite(sample.lng)) return;
+        onSample?.(sample);
+        if (settled) return;
+        if (!best || (Number.isFinite(sample.accuracy) && sample.accuracy < best.accuracy)) best = sample;
+        if (Number.isFinite(sample.accuracy) && sample.accuracy > 0 && sample.accuracy <= maxAccuracyMeters) {
+          finish({ sample });
+        }
+      }, error => {
+        if (settled) return;
+        lastError = error;
+        if (error.code === error.PERMISSION_DENIED) {
+          finish({ error: new GeolocationAcquireError('denied', 'Location permission denied.') });
+        }
+      }, {
+        enableHighAccuracy: true,
+        maximumAge: 0,
+        timeout: timeoutMs
+      });
+      // Test doubles and native bridges can invoke callbacks synchronously.
+      if (settled) geolocation.clearWatch(watchId);
+    } catch (error) {
+      finish({ error: error instanceof Error ? error : new GeolocationAcquireError('unavailable', 'Position unavailable.') });
+    }
   });
 }

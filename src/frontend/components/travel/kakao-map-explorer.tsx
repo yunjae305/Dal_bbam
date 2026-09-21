@@ -30,6 +30,7 @@ import {
 } from '@/shared/directions';
 import { MapPattern } from '@/frontend/components/common/ui';
 import { useLocale } from '@/frontend/i18n/locale-context';
+import { acquirePosition, GeolocationAcquireError } from '@/frontend/geolocation';
 import { readLocationConsent, saveLocationConsent } from '@/frontend/location-consent';
 import { formatDistance } from '@/shared/format-distance';
 import { isInGyeongjuServiceArea } from '@/shared/service-area';
@@ -206,9 +207,10 @@ export function KakaoMapExplorer({
   const mapRef = useRef<KakaoMap | null>(null);
   const onSelectRef = useRef(onSelect);
   const selectedPlaceRef = useRef(selectedPlace);
-  const lastSelectedIdRef = useRef<string | null>(null);
   const pickingRef = useRef<RouteEndpoint | null>(null);
   const locationTargetRef = useRef<RouteEndpoint | null>(null);
+  const locationAbortRef = useRef<AbortController | null>(null);
+  const locationRevisionRef = useRef(0);
   const locateOnArrivalRef = useRef(false);
   const markersRef = useRef<Array<{ marker: KakaoMarker; click: () => void }>>([]);
   const clustererRef = useRef<KakaoMarkerClusterer | null>(null);
@@ -279,14 +281,31 @@ export function KakaoMapExplorer({
     markersRef.current = [];
   }, []);
 
+  const cancelLocation = useCallback(() => {
+    locationRevisionRef.current += 1;
+    locationAbortRef.current?.abort();
+    locationAbortRef.current = null;
+    locationTargetRef.current = null;
+  }, []);
+
+  const cancelPicking = useCallback(() => {
+    cancelLocation();
+    pickingRef.current = null;
+    setPicking(null);
+    setRouteExpanded(true);
+    setLocationError('');
+  }, [cancelLocation]);
+
   const assignEndpoint = useCallback((endpoint: RouteEndpoint, point: RoutePoint) => {
+    cancelLocation();
     if (endpoint === 'origin') setOrigin(point);
     else setDestination(point);
+    pickingRef.current = null;
     setPicking(null);
     setRouteIntent(true);
     setRouteExpanded(true);
     setLocationError('');
-  }, []);
+  }, [cancelLocation]);
 
   useEffect(() => {
     onSelectRef.current = onSelect;
@@ -301,12 +320,15 @@ export function KakaoMapExplorer({
   }, [picking]);
 
   useEffect(() => {
+    let cancelled = false;
     readLocationConsent()
       .then(granted => {
+        if (cancelled) return;
         locateOnArrivalRef.current = granted === true;
         setConsent(granted);
       })
-      .catch(() => setConsent(null));
+      .catch(() => { if (!cancelled) setConsent(null); });
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
@@ -383,7 +405,7 @@ export function KakaoMapExplorer({
     });
     markersRef.current = markerEntries;
 
-    if (maps.MarkerClusterer) {
+    if (maps.MarkerClusterer && !picking) {
       clustererRef.current = new maps.MarkerClusterer({
         map,
         averageCenter: true,
@@ -395,7 +417,7 @@ export function KakaoMapExplorer({
     }
 
     return clearMarkers;
-  }, [assignEndpoint, clearMarkers, mapGeneration, places]);
+  }, [assignEndpoint, clearMarkers, mapGeneration, picking, places]);
 
   useEffect(() => {
     const maps = window.kakao?.maps;
@@ -404,38 +426,8 @@ export function KakaoMapExplorer({
     map.panTo(new maps.LatLng(selectedPlace.coordinates[0], selectedPlace.coordinates[1]));
   }, [mapGeneration, selectedPlace]);
 
-  // Picking a place only fills an endpoint while the traveler is choosing one.
-  // Otherwise the place card asks whether it is the start or the destination.
-  useEffect(() => {
-    if (!selectedPlace) return;
-    if (lastSelectedIdRef.current === selectedPlace.contentId) return;
-    lastSelectedIdRef.current = selectedPlace.contentId;
-    if (pickingRef.current) assignEndpoint(pickingRef.current, placePoint(selectedPlace));
-  }, [assignEndpoint, selectedPlace]);
-
-  // A fresh GPS fix becomes the origin unless the user explicitly asked for it elsewhere.
-  useEffect(() => {
-    if (!location) return;
-    const point: RoutePoint = {
-      kind: 'current',
-      lat: location.lat,
-      lng: location.lng,
-      name: messages.map.currentLocation
-    };
-    const target = locationTargetRef.current;
-    locationTargetRef.current = null;
-    if (target === 'destination') {
-      setDestination(point);
-      setPicking(null);
-      return;
-    }
-    if (target === 'origin') {
-      setOrigin(point);
-      setPicking(null);
-      return;
-    }
-    setOrigin(current => !current || current.kind === 'current' ? point : current);
-  }, [location, messages.map.currentLocation]);
+  // selectedPlace can change automatically after a nearby search. Only explicit
+  // marker/map clicks or place-card actions may assign a route endpoint.
 
   useEffect(() => {
     const maps = window.kakao?.maps;
@@ -563,7 +555,8 @@ export function KakaoMapExplorer({
 
   useEffect(() => () => {
     routeAbortRef.current?.abort();
-  }, []);
+    cancelLocation();
+  }, [cancelLocation]);
 
   useEffect(() => {
     const panel = routePanelRef.current;
@@ -573,19 +566,21 @@ export function KakaoMapExplorer({
     return () => observer.disconnect();
   });
 
-  const recordConsent = useCallback(async (granted: boolean) => {
+  const recordConsent = useCallback(async (granted: boolean, signal?: AbortSignal) => {
     setConsent(granted);
     try {
       await saveLocationConsent(granted);
     } catch (error) {
-      setConsent(null);
+      if (!signal?.aborted) setConsent(null);
       throw error;
     }
   }, []);
 
-  const loadNearby = useCallback(async (coordinates: Coordinates) => {
-    if (!onNearbyPlaces) return;
+  const loadNearby = useCallback(async (coordinates: Coordinates, signal: AbortSignal) => {
+    if (!onNearbyPlaces || signal.aborted) return;
     onNearbyLoading?.(true);
+    const stopLoading = () => onNearbyLoading?.(false);
+    signal.addEventListener('abort', stopLoading, { once: true });
     try {
       const params = new URLSearchParams({
         mapX: String(coordinates.lng),
@@ -593,69 +588,86 @@ export function KakaoMapExplorer({
         radius: '3000',
         numOfRows: '20'
       });
-      const response = await fetch(`/api/tour/nearby?${params}`, { cache: 'no-store' });
+      const response = await fetch(`/api/tour/nearby?${params}`, { cache: 'no-store', signal });
       const payload = await response.json() as { places?: Place[]; error?: string | { message?: string } };
+      if (signal.aborted) return;
       if (!response.ok) {
         const message = typeof payload.error === 'string' ? payload.error : payload.error?.message;
         throw new Error(message ?? '주변 관광지를 불러오지 못했습니다.');
       }
       onNearbyPlaces(payload.places ?? []);
     } catch (error) {
+      if (signal.aborted) return;
       setLocationError(error instanceof Error ? error.message : '주변 관광지를 불러오지 못했습니다.');
     } finally {
-      onNearbyLoading?.(false);
+      signal.removeEventListener('abort', stopLoading);
+      if (!signal.aborted) stopLoading();
     }
   }, [onNearbyLoading, onNearbyPlaces]);
 
   const requestLocation = useCallback(async (grantFromConsentDialog = false) => {
+    const target = locationTargetRef.current ?? pickingRef.current;
+    cancelLocation();
+    const controller = new AbortController();
+    locationAbortRef.current = controller;
     setLocationError('');
     if (consent !== true && !grantFromConsentDialog) {
+      locationTargetRef.current = target;
       setConsent(null);
       return;
     }
     if (grantFromConsentDialog) {
       try {
-        await recordConsent(true);
+        await recordConsent(true, controller.signal);
       } catch (error) {
+        if (controller.signal.aborted) return;
         setLocationError(error instanceof Error ? error.message : '위치정보 동의를 저장하지 못했습니다.');
         return;
       }
     }
+    if (controller.signal.aborted) return;
     if (!navigator.geolocation) {
       setLocationError('이 브라우저는 위치정보를 지원하지 않습니다.');
       return;
     }
 
-    navigator.geolocation.getCurrentPosition(position => {
+    acquirePosition({ maxAccuracyMeters: 100, timeoutMs: 15_000, signal: controller.signal }).then(sample => {
+      if (controller.signal.aborted) return;
       const next = {
-        lat: position.coords.latitude,
-        lng: position.coords.longitude,
-        accuracy: position.coords.accuracy
+        lat: sample.lat,
+        lng: sample.lng,
+        accuracy: sample.accuracy
       };
       // A traveler who has not arrived yet is somewhere else entirely. Using that
       // position pulled the map to their home city and picked a place there as the
       // destination, and every route then failed the service-area check.
       if (!isInGyeongjuServiceArea(next)) {
-        locationTargetRef.current = null;
         setLocationError(messages.map.outsideServiceArea);
         return;
       }
       setLocation(next);
-      void loadNearby(next);
+      const point: RoutePoint = { kind: 'current', ...next, name: messages.map.currentLocation };
+      if (target) {
+        if (target === 'destination') setDestination(point);
+        else setOrigin(point);
+        pickingRef.current = null;
+        setPicking(null);
+        setRouteIntent(true);
+        setRouteExpanded(true);
+      } else {
+        setOrigin(current => !current || current.kind === 'current' ? point : current);
+      }
+      void loadNearby(next, controller.signal);
       const maps = window.kakao?.maps;
       const map = mapRef.current;
       if (maps && map) map.panTo(new maps.LatLng(next.lat, next.lng));
     }, error => {
-      locationTargetRef.current = null;
-      setLocationError(error.code === error.PERMISSION_DENIED
+      if (controller.signal.aborted || error?.name === 'AbortError') return;
+      setLocationError(error instanceof GeolocationAcquireError && error.code === 'denied'
         ? '위치 권한이 거부되었습니다. 브라우저 설정에서 권한을 허용하거나 수동 탐색을 이용해 주세요.'
         : '현재 위치를 확인할 수 없습니다.');
-    }, {
-      enableHighAccuracy: true,
-      timeout: 10000,
-      maximumAge: 30000
     });
-  }, [consent, loadNearby, messages.map.outsideServiceArea, recordConsent]);
+  }, [cancelLocation, consent, loadNearby, messages.map.currentLocation, messages.map.outsideServiceArea, recordConsent]);
 
   // First-time visitors get their origin filled right after the consent dialog. Returning
   // visitors skipped the dialog and were left with no origin until they found the locate
@@ -666,8 +678,11 @@ export function KakaoMapExplorer({
     locateOnArrivalRef.current = false;
     const permissions = typeof navigator === 'undefined' ? undefined : navigator.permissions;
     if (!permissions?.query) return;
+    const revision = locationRevisionRef.current;
     permissions.query({ name: 'geolocation' as PermissionName })
-      .then(status => { if (status.state === 'granted') void requestLocation(); })
+      .then(status => {
+        if (status.state === 'granted' && revision === locationRevisionRef.current) void requestLocation();
+      })
       .catch(() => {});
   }, [consent, requestLocation]);
 
@@ -702,10 +717,10 @@ export function KakaoMapExplorer({
   }, [comparison, compareRoutes, consent, destination, messages.map.locationRequired, messages.map.selectBoth, origin, requestLocation, routeLoading]);
 
   const swapEndpoints = useCallback(() => {
-    setPicking(null);
+    cancelPicking();
     setOrigin(destination);
     setDestination(origin);
-  }, [destination, origin]);
+  }, [cancelPicking, destination, origin]);
 
   const searchCurrentArea = useCallback(() => {
     const map = mapRef.current;
@@ -797,7 +812,16 @@ export function KakaoMapExplorer({
         type="button"
         aria-label={pickLabel}
         aria-pressed={active}
-        onClick={() => { setRouteIntent(true); setPicking(current => current === endpoint ? null : endpoint); }}
+        onClick={() => {
+          const next = picking === endpoint ? null : endpoint;
+          cancelLocation();
+          pickingRef.current = next;
+          setRouteIntent(true);
+          setPicking(next);
+          // The route panel covers the map on mobile. Collapse it while picking
+          // so place markers and map taps remain reachable.
+          setRouteExpanded(next ? false : true);
+        }}
         className={`flex min-h-10 w-full min-w-0 items-center gap-2 rounded-xl px-3 text-left text-[11px] font-black ${active ? 'bg-[#2f7567] text-white' : 'bg-[#f4f5f6] text-[#25211d]'}`}
       >
         <span className={`shrink-0 text-[10px] ${active ? 'text-white/80' : 'text-[#2f7567]'}`}>{label}</span>
@@ -827,7 +851,7 @@ export function KakaoMapExplorer({
           type="button"
           disabled={searchAreaLoading}
           onClick={searchCurrentArea}
-          className="absolute left-1/2 top-3 z-20 inline-flex h-9 -translate-x-1/2 items-center gap-1 whitespace-nowrap rounded-full bg-white px-3 text-[10px] font-black text-[#2f7567] shadow-lg disabled:opacity-60"
+          className={`absolute left-1/2 ${picking ? 'top-20' : 'top-3'} z-20 inline-flex h-9 -translate-x-1/2 items-center gap-1 whitespace-nowrap rounded-full bg-white px-3 text-[10px] font-black text-[#2f7567] shadow-lg disabled:opacity-60`}
         >
           {searchAreaLoading ? <RotateCw className="animate-spin" size={13} /> : <Search size={13} />}
           {messages.map.searchArea}
@@ -835,12 +859,12 @@ export function KakaoMapExplorer({
       )}
 
       {consent === null && (
-        <div className="absolute inset-x-4 top-1/2 z-50 -translate-y-1/2 rounded-2xl bg-white p-4 shadow-xl ring-1 ring-black/10">
+        <div role="dialog" aria-label={messages.map.consentTitle} className="absolute inset-x-4 top-1/2 z-[60] -translate-y-1/2 rounded-2xl bg-white p-4 shadow-xl ring-1 ring-black/10">
           <button
             type="button"
             aria-label={messages.common.close}
             className="absolute right-3 top-3 text-[#7b817f]"
-            onClick={() => void recordConsent(false).catch(() => setConsent(null))}
+            onClick={() => { cancelPicking(); void recordConsent(false).catch(() => setConsent(null)); }}
           >
             <X size={18} />
           </button>
@@ -851,7 +875,7 @@ export function KakaoMapExplorer({
             <button type="button" onClick={() => void requestLocation(true)} className="rounded-full bg-[#2f7567] px-4 py-2 text-[11px] font-black text-white">
               {messages.map.allow}
             </button>
-            <button type="button" onClick={() => void recordConsent(false).catch(() => setConsent(null))} className="rounded-full bg-[#eef1ef] px-4 py-2 text-[11px] font-black">
+            <button type="button" onClick={() => { cancelPicking(); void recordConsent(false).catch(() => setConsent(null)); }} className="rounded-full bg-[#eef1ef] px-4 py-2 text-[11px] font-black">
               {messages.map.decline}
             </button>
           </div>
@@ -890,7 +914,7 @@ export function KakaoMapExplorer({
       </div>
 
       {locationError && (
-        <div className="pointer-events-none absolute inset-x-3 top-[110px] z-40 flex justify-center">
+        <div className="pointer-events-none absolute inset-x-3 top-[110px] z-[60] flex justify-center">
           <p role="status" className="pointer-events-auto max-w-full rounded-2xl bg-white/97 px-4 py-2.5 text-[11px] font-bold leading-4 text-[#a04c48] shadow-lg">
             {locationError}
           </p>
@@ -970,7 +994,7 @@ export function KakaoMapExplorer({
               <button
                 type="button"
                 aria-label={messages.common.close}
-                onClick={() => { setOrigin(null); setDestination(null); setPicking(null); setRouteIntent(false); setRouteExpanded(true); clearComparison(); setLocationError(''); onCloseRoute?.(); }}
+                onClick={() => { cancelPicking(); setOrigin(null); setDestination(null); setRouteIntent(false); clearComparison(); onCloseRoute?.(); }}
                 className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-white/85"
               >
                 <X size={18} />
@@ -1000,7 +1024,7 @@ export function KakaoMapExplorer({
                   <button type="button" onClick={() => applyCurrentLocationTo(picking)} className="inline-flex items-center gap-1 rounded-full bg-white px-2.5 py-1.5 font-black text-[#12372f]">
                     <Crosshair size={11} /> {messages.map.useCurrentLocation}
                   </button>
-                  <button type="button" onClick={() => setPicking(null)} className="rounded-full px-2 py-1.5 font-black text-white/85">
+                  <button type="button" onClick={cancelPicking} className="rounded-full px-2 py-1.5 font-black text-white/85">
                     {messages.map.cancel}
                   </button>
                 </div>
@@ -1108,6 +1132,20 @@ export function KakaoMapExplorer({
                 )}
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {showRoutePanel && !routeExpanded && picking && (
+        <div className="absolute inset-x-3 top-3 z-40 flex items-center justify-between gap-2 rounded-2xl bg-[#12372f]/95 px-3 py-2.5 text-[10px] font-bold text-white shadow-lg">
+          <span className="min-w-0 leading-4">{messages.map.pickHint}</span>
+          <div className="flex shrink-0 items-center gap-1">
+            <button type="button" onClick={() => applyCurrentLocationTo(picking)} className="inline-flex items-center gap-1 rounded-full bg-white px-2.5 py-1.5 font-black text-[#12372f]">
+              <Crosshair size={11} /> {messages.map.useCurrentLocation}
+            </button>
+            <button type="button" onClick={cancelPicking} className="rounded-full px-2 py-1.5 font-black text-white/85">
+              {messages.map.cancel}
+            </button>
           </div>
         </div>
       )}

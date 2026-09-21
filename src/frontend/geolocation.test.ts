@@ -30,6 +30,59 @@ afterEach(() => {
 });
 
 describe('acquirePosition', () => {
+  it('stops watching on cancellation and ignores queued fixes', async () => {
+    vi.useFakeTimers();
+    const { clearWatch } = installWatch([{ accuracy: 10, delayMs: 20 }]);
+    const controller = new AbortController();
+    const onSample = vi.fn();
+    const pending = acquirePosition({ maxAccuracyMeters: 100, signal: controller.signal, onSample });
+    const rejected = expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+    controller.abort();
+    await rejected;
+    await vi.advanceTimersByTimeAsync(30);
+    expect(clearWatch).toHaveBeenCalledExactlyOnceWith(7);
+    expect(onSample).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('does not start watching an already cancelled request', async () => {
+    const watchPosition = vi.fn();
+    Object.defineProperty(navigator, 'geolocation', { configurable: true, value: { watchPosition } });
+    const controller = new AbortController();
+    controller.abort();
+    await expect(acquirePosition({ maxAccuracyMeters: 100, signal: controller.signal }))
+      .rejects.toMatchObject({ name: 'AbortError' });
+    expect(watchPosition).not.toHaveBeenCalled();
+  });
+
+  it('cleans up its deadline if starting the location watch throws', async () => {
+    vi.useFakeTimers();
+    Object.defineProperty(navigator, 'geolocation', {
+      configurable: true,
+      value: { watchPosition: () => { throw new Error('Native location unavailable'); } }
+    });
+    await expect(acquirePosition({ maxAccuracyMeters: 100 })).rejects.toThrow('Native location unavailable');
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('cleans up when a native bridge returns a fix synchronously', async () => {
+    vi.useFakeTimers();
+    const clearWatch = vi.fn();
+    Object.defineProperty(navigator, 'geolocation', {
+      configurable: true,
+      value: {
+        clearWatch,
+        watchPosition: (success: WatchSuccess) => {
+          success({ coords: { latitude: 35.8, longitude: 129.2, accuracy: 10 }, timestamp: 1000 } as GeolocationPosition);
+          return 9;
+        }
+      }
+    });
+    await expect(acquirePosition({ maxAccuracyMeters: 100 })).resolves.toMatchObject({ accuracy: 10 });
+    expect(clearWatch).toHaveBeenCalledExactlyOnceWith(9);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it('resolves with the first sample that satisfies the accuracy requirement', async () => {
     vi.useFakeTimers();
     const { clearWatch } = installWatch([

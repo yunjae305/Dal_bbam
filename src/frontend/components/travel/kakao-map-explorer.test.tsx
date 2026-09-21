@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Place } from '@/shared/types';
 import { readLocationConsent, saveLocationConsent } from '@/frontend/location-consent';
@@ -138,11 +138,45 @@ function installGeolocation(read: () => { latitude: number; longitude: number })
   Object.defineProperty(navigator, 'geolocation', {
     configurable: true,
     value: {
+      watchPosition: (success: PositionCallback) => {
+        success({
+          coords: { ...read(), accuracy: 10 },
+          timestamp: Date.now()
+        } as GeolocationPosition);
+        return 1;
+      },
+      clearWatch: vi.fn(),
       getCurrentPosition: (success: PositionCallback) => success({
         coords: { ...read(), accuracy: 10 }
       } as GeolocationPosition)
     }
   });
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>(done => { resolve = done; });
+  return { promise, resolve };
+}
+
+function installPendingGeolocation() {
+  const callbacks: Array<{ success: PositionCallback; error: PositionErrorCallback | null | undefined }> = [];
+  const clearWatch = vi.fn();
+  const watchPosition = vi.fn((success: PositionCallback, error?: PositionErrorCallback | null) => {
+    callbacks.push({ success, error });
+    return callbacks.length;
+  });
+  Object.defineProperty(navigator, 'geolocation', {
+    configurable: true,
+    value: { watchPosition, clearWatch }
+  });
+  return {
+    watchPosition, clearWatch,
+    succeed: (index = 0, latitude = 35.8562) => callbacks[index].success({
+      coords: { latitude, longitude: 129.2247, accuracy: 10 }, timestamp: Date.now()
+    } as GeolocationPosition),
+    fail: (index = 0) => callbacks[index].error?.({ code: 1, PERMISSION_DENIED: 1 } as GeolocationPositionError)
+  };
 }
 
 describe('KakaoMapExplorer route state', () => {
@@ -160,6 +194,7 @@ describe('KakaoMapExplorer route state', () => {
     vi.clearAllMocks();
     delete window.kakao;
     Reflect.deleteProperty(navigator, 'permissions');
+    Reflect.deleteProperty(navigator, 'geolocation');
   });
 
   it('never substitutes a fixed Gyeongju origin when GPS is unavailable', async () => {
@@ -295,12 +330,217 @@ describe('KakaoMapExplorer route state', () => {
     await waitFor(() => expect(kakao.event.removeListener).toHaveBeenCalled());
     expect(refreshedLine.setMap).not.toHaveBeenCalledWith(null);
 
-    // 도착지를 다시 고르는 중에 장소를 선택하면 그때 경로가 바뀐다.
+    // An explicit marker click changes the route; automatic prop changes do not.
     fireEvent.click(screen.getByRole('button', { name: '도착지 선택' }));
     view.rerender(
       <KakaoMapExplorer places={[firstPlace]} selectedPlace={firstPlace} onSelect={vi.fn()} />
     );
+    expect(refreshedLine.setMap).not.toHaveBeenCalledWith(null);
+    const markerClick = kakao.listeners.findLast(entry => entry.target !== kakao.map && entry.type === 'click');
+    act(() => markerClick?.listener());
     await waitFor(() => expect(refreshedLine.setMap).toHaveBeenCalledWith(null));
+  });
+
+  it('restores the route panel after GPS selects a destination, without nearby auto-selection overwriting it', async () => {
+    installKakaoMock();
+    vi.mocked(readLocationConsent).mockResolvedValue(true);
+    const gps = installPendingGeolocation();
+    const onSelect = vi.fn();
+    const nearby = vi.fn();
+    fetchMock.mockImplementation(async (url: string) => ({
+      ok: true, json: async () => url.includes('/nearby?') ? { places: [secondPlace] } : comparisonPayload()
+    }));
+    const view = render(<KakaoMapExplorer places={[firstPlace]} selectedPlace={firstPlace} onSelect={onSelect} onNearbyPlaces={nearby} />);
+    fireEvent.click(await screen.findByRole('button', { name: '출발지 선택' }));
+    fireEvent.click(screen.getByRole('button', { name: '도착지 선택' }));
+    expect(screen.queryByRole('button', { name: '출발지 선택' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '현재 위치 사용' }));
+    await act(async () => gps.succeed());
+    expect(screen.getByRole('button', { name: '도착지 선택' })).toHaveTextContent('현재 위치');
+    await waitFor(() => expect(nearby).toHaveBeenCalledWith([secondPlace]));
+    view.rerender(<KakaoMapExplorer places={[secondPlace]} selectedPlace={secondPlace} onSelect={onSelect} onNearbyPlaces={nearby} />);
+    expect(screen.getByRole('button', { name: '출발지 선택' })).toHaveTextContent(firstPlace.name);
+    expect(screen.getByRole('button', { name: '도착지 선택' })).toHaveTextContent('현재 위치');
+  });
+
+  it('keeps marker selection reachable and ignores automatic place changes while picking', async () => {
+    const kakao = installKakaoMock();
+    vi.mocked(readLocationConsent).mockResolvedValue(true);
+    const gps = installPendingGeolocation();
+    const onSelect = vi.fn();
+    fetchMock.mockResolvedValue({ ok: true, json: async () => comparisonPayload() });
+    const view = render(<KakaoMapExplorer places={[firstPlace, secondPlace]} selectedPlace={firstPlace} onSelect={onSelect} />);
+    fireEvent.click(await screen.findByRole('button', { name: '출발지 선택' }));
+    fireEvent.click(screen.getByRole('button', { name: '도착지 선택' }));
+    fireEvent.click(screen.getByRole('button', { name: '현재 위치 사용' }));
+    view.rerender(<KakaoMapExplorer places={[firstPlace, secondPlace]} selectedPlace={secondPlace} onSelect={onSelect} />);
+    expect(screen.getByRole('button', { name: '취소' })).toBeVisible();
+    const marker = kakao.markerInstances.findLast(instance => instance.setMap.mock.calls.some(([map]) => map === kakao.map));
+    expect(marker).toBeDefined();
+    const click = kakao.listeners.findLast(entry => entry.target === marker);
+    // Simulate a queued GPS resolution followed by a marker tap in the same turn.
+    await act(async () => { gps.succeed(); click?.listener(); });
+    expect(gps.clearWatch).toHaveBeenCalledWith(1);
+    expect(screen.getByRole('button', { name: '도착지 선택' })).toHaveTextContent(secondPlace.name);
+    expect(screen.getByRole('button', { name: '출발지 선택' })).toHaveTextContent(firstPlace.name);
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it.each(['cancel', 'change', 'swap', 'close', 'unmount'] as const)('discards queued GPS success after %s', async action => {
+    const kakao = installKakaoMock();
+    vi.mocked(readLocationConsent).mockResolvedValue(true);
+    const gps = installPendingGeolocation();
+    const nearby = vi.fn();
+    const close = vi.fn();
+    const view = render(<KakaoMapExplorer places={[firstPlace]} selectedPlace={firstPlace} onSelect={vi.fn()} onNearbyPlaces={nearby} onCloseRoute={close} />);
+    fireEvent.click(await screen.findByRole('button', { name: '도착지 선택' }));
+    if (action === 'cancel') {
+      fireEvent.click(screen.getByRole('button', { name: '출발지 선택' }));
+      fireEvent.click(screen.getByRole('button', { name: '현재 위치 사용' }));
+    } else {
+      fireEvent.click(screen.getByRole('button', { name: '현재 위치' }));
+    }
+    kakao.map.panTo.mockClear();
+    await act(async () => {
+      gps.succeed();
+      if (action === 'cancel') fireEvent.click(screen.getByRole('button', { name: '취소' }));
+      if (action === 'change') fireEvent.click(screen.getByRole('button', { name: '출발지 선택' }));
+      if (action === 'swap') fireEvent.click(screen.getByRole('button', { name: '출발·도착 바꾸기' }));
+      if (action === 'close') fireEvent.click(screen.getByRole('button', { name: '닫기' }));
+      if (action === 'unmount') view.unmount();
+    });
+    expect(gps.clearWatch).toHaveBeenCalledWith(1);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(nearby).not.toHaveBeenCalled();
+    expect(kakao.map.panTo).not.toHaveBeenCalled();
+    if (action === 'cancel') expect(screen.getByRole('button', { name: '출발지 선택' })).toHaveTextContent('선택 안 됨');
+    if (action === 'change') expect(screen.getByRole('button', { name: '취소' })).toBeVisible();
+    if (action === 'swap') expect(screen.getByRole('button', { name: '출발지 선택' })).toHaveTextContent(firstPlace.name);
+    if (action === 'close') expect(close).toHaveBeenCalledOnce();
+  });
+
+  it('cancels the watch and ignores a queued denial when selecting a map point', async () => {
+    const kakao = installKakaoMock();
+    vi.mocked(readLocationConsent).mockResolvedValue(true);
+    const gps = installPendingGeolocation();
+    fetchMock.mockResolvedValue({ ok: true, json: async () => comparisonPayload() });
+    render(<KakaoMapExplorer places={[firstPlace]} selectedPlace={firstPlace} onSelect={vi.fn()} />);
+    fireEvent.click(await screen.findByRole('button', { name: '도착지 선택' }));
+    fireEvent.click(screen.getByRole('button', { name: '출발지 선택' }));
+    fireEvent.click(screen.getByRole('button', { name: '현재 위치 사용' }));
+    const click = kakao.listeners.find(entry => entry.target === kakao.map);
+    await act(async () => {
+      gps.fail();
+      click?.listener({ latLng: { getLat: () => 35.84, getLng: () => 129.21 } });
+    });
+    expect(screen.getByRole('button', { name: '출발지 선택' })).toHaveTextContent('지도에서 선택한 지점');
+    expect(screen.queryByText(/위치 권한이 거부/)).not.toBeInTheDocument();
+    expect(gps.clearWatch).toHaveBeenCalledWith(1);
+  });
+
+  it('uses only the latest GPS request and aborts an unfinished older watch', async () => {
+    const kakao = installKakaoMock();
+    vi.mocked(readLocationConsent).mockResolvedValue(true);
+    const gps = installPendingGeolocation();
+    render(<KakaoMapExplorer places={[]} onSelect={vi.fn()} />);
+    fireEvent.click(await screen.findByRole('button', { name: '현재 위치' }));
+    fireEvent.click(screen.getByRole('button', { name: '현재 위치' }));
+    expect(gps.clearWatch).toHaveBeenCalledWith(1);
+    await act(async () => { gps.succeed(1, 35.86); gps.succeed(0, 35.84); gps.fail(0); });
+    expect(kakao.map.panTo).toHaveBeenCalledExactlyOnceWith({ lat: 35.86, lng: 129.2247 });
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
+
+  it('discards a nearby response that arrives after the user begins selecting an endpoint', async () => {
+    installKakaoMock();
+    vi.mocked(readLocationConsent).mockResolvedValue(true);
+    installGeolocation(() => ({ latitude: 35.8562, longitude: 129.2247 }));
+    const response = deferred<{ ok: boolean; json: () => Promise<{ places: Place[] }> }>();
+    fetchMock.mockReturnValue(response.promise);
+    const nearby = vi.fn();
+    const loading = vi.fn();
+    render(<KakaoMapExplorer places={[firstPlace]} selectedPlace={firstPlace} onSelect={vi.fn()} onNearbyPlaces={nearby} onNearbyLoading={loading} />);
+    fireEvent.click(await screen.findByRole('button', { name: '현재 위치' }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+    fireEvent.click(screen.getByRole('button', { name: '도착지 선택' }));
+    fireEvent.click(screen.getByRole('button', { name: '출발지 선택' }));
+    expect(fetchMock.mock.calls[0][1].signal.aborted).toBe(true);
+    await act(async () => response.resolve({ ok: true, json: async () => ({ places: [secondPlace] }) }));
+    expect(nearby).not.toHaveBeenCalled();
+    expect(loading).toHaveBeenLastCalledWith(false);
+    expect(screen.getByRole('button', { name: '취소' })).toBeVisible();
+  });
+
+  it('shows consent above the expanded route panel and preserves the requested GPS destination', async () => {
+    installKakaoMock();
+    vi.mocked(readLocationConsent).mockResolvedValue(false);
+    const gps = installPendingGeolocation();
+    fetchMock.mockResolvedValue({ ok: true, json: async () => comparisonPayload() });
+    render(<KakaoMapExplorer places={[firstPlace]} selectedPlace={firstPlace} onSelect={vi.fn()} />);
+    fireEvent.click(await screen.findByRole('button', { name: '출발지 선택' }));
+    fireEvent.click(screen.getByRole('button', { name: '현재 위치' }));
+    const dialog = screen.getByRole('dialog', { name: '위치 동의' });
+    expect(dialog).toHaveClass('z-[60]');
+    fireEvent.click(within(dialog).getByRole('button', { name: '수동 탐색' }));
+    fireEvent.click(screen.getByRole('button', { name: '도착지 선택' }));
+    fireEvent.click(screen.getByRole('button', { name: '현재 위치 사용' }));
+    fireEvent.click(screen.getByRole('button', { name: '동의하고 위치 사용' }));
+    await waitFor(() => expect(gps.watchPosition).toHaveBeenCalledOnce());
+    await act(async () => gps.succeed());
+    expect(screen.getByRole('button', { name: '출발지 선택' })).toHaveTextContent(firstPlace.name);
+    expect(screen.getByRole('button', { name: '도착지 선택' })).toHaveTextContent('현재 위치');
+  });
+
+  it('does not start GPS after consent persistence completes for a cancelled selection', async () => {
+    installKakaoMock();
+    vi.mocked(readLocationConsent).mockResolvedValue(false);
+    const saved = deferred<boolean>();
+    vi.mocked(saveLocationConsent).mockReturnValue(saved.promise);
+    const gps = installPendingGeolocation();
+    render(<KakaoMapExplorer places={[firstPlace]} selectedPlace={firstPlace} onSelect={vi.fn()} />);
+    fireEvent.click(await screen.findByRole('button', { name: '출발지 선택' }));
+    fireEvent.click(screen.getByRole('button', { name: '도착지 선택' }));
+    fireEvent.click(screen.getByRole('button', { name: '현재 위치 사용' }));
+    fireEvent.click(screen.getByRole('button', { name: '동의하고 위치 사용' }));
+    fireEvent.click(screen.getByRole('button', { name: '취소' }));
+    await act(async () => saved.resolve(true));
+    expect(gps.watchPosition).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: '도착지 선택' })).toHaveTextContent('선택 안 됨');
+  });
+
+  it('ignores a late browser permission result after the user begins a manual selection', async () => {
+    installKakaoMock();
+    vi.mocked(readLocationConsent).mockResolvedValue(true);
+    const gps = installPendingGeolocation();
+    const permission = deferred<{ state: PermissionState }>();
+    const query = vi.fn().mockReturnValue(permission.promise);
+    Object.defineProperty(navigator, 'permissions', { configurable: true, value: { query } });
+    render(<KakaoMapExplorer places={[firstPlace]} selectedPlace={firstPlace} onSelect={vi.fn()} routeOpen />);
+    await waitFor(() => expect(query).toHaveBeenCalledOnce());
+    fireEvent.click(screen.getByRole('button', { name: '출발지 선택' }));
+    await act(async () => permission.resolve({ state: 'granted' }));
+    expect(gps.watchPosition).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: '취소' })).toBeVisible();
+  });
+
+  it('keeps GPS errors above the route panel and area search below the picking banner', async () => {
+    installKakaoMock();
+    vi.mocked(readLocationConsent).mockResolvedValue(true);
+    const gps = installPendingGeolocation();
+    const searchArea = vi.fn();
+    render(<KakaoMapExplorer places={[firstPlace]} selectedPlace={firstPlace} onSelect={vi.fn()} onSearchArea={searchArea} />);
+    fireEvent.click(await screen.findByRole('button', { name: '도착지 선택' }));
+    fireEvent.click(screen.getByRole('button', { name: '자동차' }));
+    await act(async () => gps.fail());
+    expect(screen.getByRole('status')).toHaveTextContent('위치 권한이 거부');
+    expect(screen.getByRole('status').parentElement).toHaveClass('z-[60]');
+    fireEvent.click(screen.getByRole('button', { name: '출발지 선택' }));
+    const search = screen.getByRole('button', { name: '현 지도에서 검색' });
+    expect(search).toHaveClass('top-20');
+    fireEvent.click(search);
+    expect(searchArea).toHaveBeenCalledWith({ south: 35.7, west: 129, north: 36, east: 129.4 });
+    fireEvent.click(screen.getByRole('button', { name: '취소' }));
+    expect(search).toHaveClass('top-3');
   });
 
   it('shows when the traveler would arrive and moves the map to a chosen turn', async () => {
