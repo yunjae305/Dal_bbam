@@ -33,7 +33,6 @@ import { useLocale } from '@/frontend/i18n/locale-context';
 import { acquirePosition, GeolocationAcquireError } from '@/frontend/geolocation';
 import { readLocationConsent, saveLocationConsent } from '@/frontend/location-consent';
 import { formatDistance } from '@/shared/format-distance';
-import { isInGyeongjuServiceArea } from '@/shared/service-area';
 import { loadKakaoMaps } from '@/frontend/kakao-sdk';
 
 type KakaoLatLng = object;
@@ -638,13 +637,6 @@ export function KakaoMapExplorer({
         lng: sample.lng,
         accuracy: sample.accuracy
       };
-      // A traveler who has not arrived yet is somewhere else entirely. Using that
-      // position pulled the map to their home city and picked a place there as the
-      // destination, and every route then failed the service-area check.
-      if (!isInGyeongjuServiceArea(next)) {
-        setLocationError(messages.map.outsideServiceArea);
-        return;
-      }
       setLocation(next);
       const point: RoutePoint = { kind: 'current', ...next, name: messages.map.currentLocation };
       if (target) {
@@ -667,7 +659,7 @@ export function KakaoMapExplorer({
         ? '위치 권한이 거부되었습니다. 브라우저 설정에서 권한을 허용하거나 수동 탐색을 이용해 주세요.'
         : '현재 위치를 확인할 수 없습니다.');
     });
-  }, [cancelLocation, consent, loadNearby, messages.map.currentLocation, messages.map.outsideServiceArea, recordConsent]);
+  }, [cancelLocation, consent, loadNearby, messages.map.currentLocation, recordConsent]);
 
   // First-time visitors get their origin filled right after the consent dialog. Returning
   // visitors skipped the dialog and were left with no origin until they found the locate

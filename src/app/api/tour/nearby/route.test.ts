@@ -15,11 +15,16 @@ function request(mapX: string, mapY: string) {
 describe('nearby attractions', () => {
   afterEach(() => vi.clearAllMocks());
 
-  it('refuses coordinates outside Gyeongju so another city never appears as nearby', async () => {
+  it('accepts coordinates outside Gyeongju for nearby places', async () => {
+    mocks.nearby.mockResolvedValue({ items: [], totalCount: 0 });
     // 서울 양천구
     const response = await GET(request('126.8562', '37.5266'));
-    expect(response.status).toBe(422);
-    expect((await response.json()).error.code).toBe('OUTSIDE_GYEONGJU');
+    expect(response.status).toBe(200);
+    expect(mocks.nearby).toHaveBeenCalledWith(expect.objectContaining({ mapX: '126.8562', mapY: '37.5266' }));
+  });
+
+  it('rejects invalid coordinates before calling the provider', async () => {
+    expect((await GET(request('126', '95'))).status).toBe(400);
     expect(mocks.nearby).not.toHaveBeenCalled();
   });
 

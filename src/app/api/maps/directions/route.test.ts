@@ -112,17 +112,17 @@ describe('map directions', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it('rejects routes outside the Gyeongju service area before calling Kakao', async () => {
+  it('requests routes from Seoul to Gyeongju without a service area restriction', async () => {
     vi.stubEnv('KAKAO_REST_API_KEY', 'rest-key');
-    const fetchMock = vi.fn();
+    const fetchMock = vi.fn().mockResolvedValue(Response.json({ routes: [{ result_code: 0, summary: { distance: 330000, duration: 14400 } }] }));
     vi.stubGlobal('fetch', fetchMock);
 
     const response = await GET(request('car', { originLat: '37.5665', originLng: '126.978' }));
     const payload = await response.json();
 
-    expect(response.status).toBe(400);
-    expect(payload.error.code).toBe('OUTSIDE_GYEONGJU');
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(response.status).toBe(200);
+    expect(payload.data.source).toBe('kakao-mobility');
+    expect(new URL(String(fetchMock.mock.calls[0][0])).searchParams.get('origin')).toContain('126.978,37.5665');
   });
 
   it('rejects missing coordinates', async () => {

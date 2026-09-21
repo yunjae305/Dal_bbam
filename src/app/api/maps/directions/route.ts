@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { apiData, apiError } from '@/backend/http';
 import { distanceMeters, isValidCoordinate } from '@/backend/geo';
-import { checkMapApiRateLimit, isInGyeongjuServiceArea } from '@/backend/kakao-map';
+import { checkMapApiRateLimit } from '@/backend/kakao-map';
 import { resolveDirections, type RouteEndpoints } from '@/backend/kakao-directions';
 import { directionModes, type DirectionMode } from '@/shared/directions';
 export type { DirectionMode, DirectionResult, DirectionStep } from '@/shared/directions';
@@ -48,9 +48,6 @@ export async function GET(request: NextRequest) {
 
   if (!isValidCoordinate(origin.lat, origin.lng) || !isValidCoordinate(destination.lat, destination.lng)) {
     return apiError('INVALID_COORDINATES', '유효한 출발지와 목적지 좌표가 필요합니다.');
-  }
-  if (!isInGyeongjuServiceArea(origin) || !isInGyeongjuServiceArea(destination)) {
-    return apiError('OUTSIDE_GYEONGJU', '경주 서비스 권역 안의 출발지와 목적지만 지원합니다.');
   }
   if (!checkMapApiRateLimit(request, 'kakao-directions', 30)) {
     return apiError('RATE_LIMITED', '길찾기 요청이 많습니다. 잠시 후 다시 시도해 주세요.', 429);

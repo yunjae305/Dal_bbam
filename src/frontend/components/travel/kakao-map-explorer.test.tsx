@@ -575,17 +575,18 @@ describe('KakaoMapExplorer route state', () => {
     expect(screen.getByRole('button', { name: '현재 위치' })).toBeVisible();
   });
 
-  it('refuses a location outside Gyeongju instead of routing from another city', async () => {
-    installKakaoMock();
+  it('accepts Seoul GPS as the origin for a route to Gyeongju', async () => {
+    const { map } = installKakaoMock();
     vi.mocked(readLocationConsent).mockResolvedValue(true);
     // 서울 양천구: 여행자가 아직 경주에 도착하지 않은 상태
     installGeolocation(() => ({ latitude: 37.5266, longitude: 126.8562 }));
+    fetchMock.mockResolvedValue({ ok: true, json: async () => comparisonPayload() });
     render(<KakaoMapExplorer places={[firstPlace]} selectedPlace={firstPlace} onSelect={vi.fn()} />);
 
     fireEvent.click(await screen.findByRole('button', { name: '현재 위치' }));
-
-    expect(await screen.findByText(/경주 밖이라/)).toBeVisible();
-    // 주변 관광지도, 경로 비교도 요청하지 않는다.
-    expect(fetchMock).not.toHaveBeenCalled();
+    await waitFor(() => expect(map.panTo).toHaveBeenCalledWith({ lat: 37.5266, lng: 126.8562 }));
+    fireEvent.click(screen.getByRole('button', { name: '도착지 선택' }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+    expect(new URL(String(fetchMock.mock.calls[0][0]), 'http://localhost').searchParams.get('originLat')).toBe('37.5266');
   });
 });

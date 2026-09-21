@@ -28,7 +28,7 @@ function kakaoResponse() {
 }
 
 describe('Kakao Places proxy', () => {
-  it('searches by keyword inside the clipped current map bounds', async () => {
+  it('searches by keyword inside the current map bounds', async () => {
     vi.stubEnv('KAKAO_REST_API_KEY', 'rest-key');
     const fetchMock = vi.fn().mockResolvedValue(kakaoResponse());
     vi.stubGlobal('fetch', fetchMock);
@@ -71,9 +71,9 @@ describe('Kakao Places proxy', () => {
     expect(upstream.searchParams.get('radius')).toBe('20000');
   });
 
-  it('rejects a map area with no intersection with Gyeongju', async () => {
+  it('searches Seoul bounds and keeps places outside Gyeongju', async () => {
     vi.stubEnv('KAKAO_REST_API_KEY', 'rest-key');
-    const fetchMock = vi.fn();
+    const fetchMock = vi.fn().mockResolvedValue(Response.json({ documents: [{ id: 'seoul', place_name: '서울시청', x: '126.978', y: '37.5665' }] }));
     vi.stubGlobal('fetch', fetchMock);
 
     const response = await GET(new NextRequest(
@@ -81,9 +81,26 @@ describe('Kakao Places proxy', () => {
     ));
     const payload = await response.json();
 
+    expect(response.status).toBe(200);
+    expect(payload.data.places[0]).toMatchObject({ name: '서울시청', lat: 37.5665 });
+    expect(new URL(String(fetchMock.mock.calls[0][0])).searchParams.get('rect')).toBe('126.8,37.4,127.2,37.7');
+  });
+
+  it('does not restrict nationwide keyword searches to the Gyeongju radius', async () => {
+    vi.stubEnv('KAKAO_REST_API_KEY', 'rest-key');
+    const fetchMock = vi.fn().mockResolvedValue(kakaoResponse());
+    vi.stubGlobal('fetch', fetchMock);
+    expect((await GET(new NextRequest('http://localhost/api/maps/places?query=Seoul'))).status).toBe(200);
+    const params = new URL(String(fetchMock.mock.calls[0][0])).searchParams;
+    expect(params.has('radius')).toBe(false);
+    expect(params.has('x')).toBe(false);
+    expect(params.get('sort')).toBe('accuracy');
+  });
+
+  it('still rejects invalid map bounds', async () => {
+    const response = await GET(new NextRequest('http://localhost/api/maps/places?category=AT4&south=95&west=126&north=96&east=127'));
     expect(response.status).toBe(400);
-    expect(payload.error.code).toBe('OUTSIDE_GYEONGJU');
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect((await response.json()).error.code).toBe('INVALID_BOUNDS');
   });
 
   it('requires either a keyword or category', async () => {

@@ -4,10 +4,9 @@ import {
   checkMapApiRateLimit,
   GYEONGJU_CENTER,
   type GeoBounds,
-  intersectGyeongjuBounds,
-  isInGyeongjuServiceArea,
   TimedCache
 } from '@/backend/kakao-map';
+import { isValidCoordinate } from '@/backend/geo';
 
 const categoryGroups = new Set([
   'MT1', 'CS2', 'PS3', 'SC4', 'AC5', 'PK6', 'OL7', 'SW8', 'BK9',
@@ -77,7 +76,7 @@ function numericParam(request: NextRequest, name: string): number | null {
   return Number.isFinite(value) ? value : Number.NaN;
 }
 
-function requestedBounds(request: NextRequest): { bounds?: GeoBounds; invalid?: boolean; outside?: boolean } {
+function requestedBounds(request: NextRequest): { bounds?: GeoBounds; invalid?: boolean } {
   const values = {
     south: numericParam(request, 'south'),
     west: numericParam(request, 'west'),
@@ -92,8 +91,8 @@ function requestedBounds(request: NextRequest): { bounds?: GeoBounds; invalid?: 
 
   const bounds = values as GeoBounds;
   if (bounds.south >= bounds.north || bounds.west >= bounds.east) return { invalid: true };
-  const intersection = intersectGyeongjuBounds(bounds);
-  return intersection ? { bounds: intersection } : { outside: true };
+  if (!isValidCoordinate(bounds.south, bounds.west) || !isValidCoordinate(bounds.north, bounds.east)) return { invalid: true };
+  return { bounds };
 }
 
 function safePlaceUrl(value?: string): string {
@@ -112,7 +111,7 @@ function mapPlace(document: KakaoPlaceDocument): KakaoPlace | null {
   const lat = Number(document.y);
   const lng = Number(document.x);
   if (!document.id || !document.place_name || !Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-  if (!isInGyeongjuServiceArea({ lat, lng })) return null;
+  if (!document.x?.trim() || !document.y?.trim() || !isValidCoordinate(lat, lng)) return null;
   const distance = document.distance ? Number(document.distance) : Number.NaN;
 
   return {
@@ -148,9 +147,6 @@ export async function GET(request: NextRequest) {
   if (parsedBounds.invalid) {
     return apiError('INVALID_BOUNDS', '유효한 지도 영역 좌표가 필요합니다.');
   }
-  if (parsedBounds.outside) {
-    return apiError('OUTSIDE_GYEONGJU', '경주 서비스 권역 안에서만 장소를 검색할 수 있습니다.');
-  }
   if (!checkMapApiRateLimit(request, 'kakao-places', 45)) {
     return apiError('RATE_LIMITED', '장소 검색 요청이 많습니다. 잠시 후 다시 시도해 주세요.', 429);
   }
@@ -175,14 +171,14 @@ export async function GET(request: NextRequest) {
   if (category) url.searchParams.set('category_group_code', category);
   if (bounds) {
     url.searchParams.set('rect', `${bounds.west},${bounds.south},${bounds.east},${bounds.north}`);
-  } else {
+  } else if (!query) {
     url.searchParams.set('x', String(GYEONGJU_CENTER.lng));
     url.searchParams.set('y', String(GYEONGJU_CENTER.lat));
     url.searchParams.set('radius', '20000');
   }
   url.searchParams.set('page', String(page));
   url.searchParams.set('size', String(size));
-  url.searchParams.set('sort', bounds ? 'accuracy' : 'distance');
+  url.searchParams.set('sort', bounds || query ? 'accuracy' : 'distance');
 
   const startedAt = Date.now();
   try {
