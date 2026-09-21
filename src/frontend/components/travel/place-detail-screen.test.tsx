@@ -91,4 +91,15 @@ describe('place narration playback', () => {
     await screen.findByRole('heading', { name: '경주 불국사' });
     expect(screen.queryByText(/database|tour-api|sample/)).not.toBeInTheDocument();
   });
+
+  it('shares the popular place through the native chooser', async () => {
+    const share = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal('navigator', { share });
+    render(<PlaceDetailScreen contentId="126166" />);
+    const button = await screen.findByRole('button', { name: messages.ko.common.share });
+    await act(async () => { fireEvent.click(button); });
+    expect(share).toHaveBeenCalledWith({
+      title: place.name, text: place.description, url: `${window.location.origin}/places/126166`
+    });
+  });
 });

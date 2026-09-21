@@ -2,9 +2,10 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Bookmark, ChevronLeft, LoaderCircle, MapPin, Pause, Play, Share2, Volume2 } from 'lucide-react';
+import { Bookmark, ChevronLeft, LoaderCircle, MapPin, Pause, Play, Volume2 } from 'lucide-react';
 import type { Lang, Narration, PlaceDetail } from '@/shared/types';
 import { EmptyState } from '@/frontend/components/common/feedback';
+import { ShareLinkButton } from '@/frontend/components/common/share-link-button';
 import { useLocale } from '@/frontend/i18n/locale-context';
 import { uiMessages } from '@/shared/ui-messages';
 import { PlaceReviews } from '@/frontend/components/travel/place-reviews';
@@ -152,21 +153,6 @@ export function PlaceDetailScreen({ contentId }: { contentId: string }) {
     }
   }
 
-  async function share() {
-    const url = window.location.href;
-    try {
-      if (navigator.share) {
-        await navigator.share({ title: place?.name, text: place?.description, url });
-      } else {
-        await navigator.clipboard.writeText(url);
-        setNotice(ui.copied);
-      }
-    } catch (cause) {
-      if (cause instanceof DOMException && cause.name === 'AbortError') return;
-      setNotice(ui.shareFailed);
-    }
-  }
-
   function goBack() {
     if (window.history.length > 1) router.back();
     else router.push('/map');
@@ -181,7 +167,7 @@ export function PlaceDetailScreen({ contentId }: { contentId: string }) {
         {place.imageUrl && <img src={place.imageUrl} alt={place.name} className="h-full w-full object-cover" />}
         <div className="absolute inset-0 bg-gradient-to-t from-black/65 via-transparent to-black/35" />
         <button type="button" onClick={goBack} className="absolute left-4 top-5 grid h-10 w-10 place-items-center rounded-full bg-black/30 text-white backdrop-blur" aria-label={ui.backToMap}><ChevronLeft /></button>
-        <button type="button" onClick={share} className="absolute right-4 top-5 grid h-10 w-10 place-items-center rounded-full bg-black/30 text-white backdrop-blur" aria-label={messages.common.share}><Share2 size={18} /></button>
+        <ShareLinkButton path={`/places/${encodeURIComponent(contentId)}`} title={place.name} text={place.description} label={messages.common.share} className="absolute right-4 top-5 grid h-10 w-10 place-items-center rounded-full bg-black/30 text-white backdrop-blur" />
         <div className="absolute inset-x-5 bottom-5 text-white">
           <p className="text-[10px] font-black">{messages.categories[place.category]}</p>
           <h1 className="mt-2 text-3xl font-black">{place.name}</h1>
