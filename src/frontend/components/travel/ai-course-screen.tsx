@@ -286,7 +286,7 @@ export function AiCourseScreen({ places }: Props) {
               })}
             </div>
           </div>
-          <button type="button" onClick={recommend} disabled={loading || !request.interests.length} className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#223c72] text-[12px] font-black text-white disabled:opacity-50">
+          <button type="button" onClick={recommend} disabled={loading || !request.interests.length} className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#75485c] text-[12px] font-black text-white disabled:opacity-50">
             {loading ? <LoaderCircle className="animate-spin" size={16} /> : <Sparkles size={16} />}
             {messages.ai.recommend}
           </button>

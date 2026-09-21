@@ -223,7 +223,7 @@ export function TravelCartScreen({ places, userEmail }: Props) {
           </button>
         </div>
 
-        {notice && <p className="mt-3 rounded-xl bg-[#fff3ef] p-3 text-[10px] font-bold text-[#9b4e45]" role="status">{notice}</p>}
+        {notice && <p className="mt-3 rounded-xl bg-[#fff3ef] p-3 text-[13px] font-bold text-[#9b4e45]" role="status">{notice}</p>}
         <div className="mt-4 grid grid-cols-2 gap-3 rounded-xl bg-white p-3">
           <label className="text-[10px] font-bold">{planner.targetSchedule}<select value={targetId} disabled={busy} onChange={event => { const id = event.target.value; setTargetId(id); setTargetDate(schedules.find(schedule => schedule.id === id)?.start_date ?? todayLocalDate()); }} className="mt-2 h-11 w-full min-w-0 rounded-lg bg-[#f4f5f6] px-2 text-[11px]"><option value="">{planner.newSchedule}</option>{schedules.map(schedule => <option key={schedule.id} value={schedule.id}>{schedule.title}</option>)}</select></label>
           <label className="text-[10px] font-bold">{planner.targetDate}{targetId ? <select value={targetDate} disabled={busy} onChange={event => setTargetDate(event.target.value)} className="mt-2 h-11 w-full min-w-0 rounded-lg bg-[#f4f5f6] px-2 text-[11px]">{targetDates.map(date => <option key={date} value={date}>{date}</option>)}</select> : <input type="date" disabled={busy} value={targetDate} onChange={event => setTargetDate(event.target.value)} className="mt-2 h-11 w-full min-w-0 rounded-lg bg-[#f4f5f6] px-2 text-[11px]" />}</label>

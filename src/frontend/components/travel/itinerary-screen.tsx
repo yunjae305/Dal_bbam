@@ -325,7 +325,7 @@ export function ItineraryScreen({ places }: Props) {
           <>
             <div className="mt-3 flex gap-2 overflow-x-auto">
               {schedules.map(schedule => (
-                <button key={schedule.id} type="button" onClick={() => setActiveId(schedule.id)} className={`shrink-0 rounded-full px-4 py-2 text-[10px] font-black ${schedule.id === active.id ? 'bg-[#223c72] text-white' : 'bg-[#eef0f3]'}`}>
+                <button key={schedule.id} type="button" onClick={() => setActiveId(schedule.id)} className={`shrink-0 rounded-full px-4 py-2 text-[10px] font-black ${schedule.id === active.id ? 'bg-[#c7a35a] text-[#3e3321]' : 'bg-[#eef0f3]'}`}>
                   {schedule.title}
                 </button>
               ))}
@@ -399,12 +399,12 @@ export function ItineraryScreen({ places }: Props) {
                       touchDrag?.from === index ? 'opacity-70 ring-2 ring-[#223c72]' : ''
                     } ${touchDrag && touchDrag.over === index && touchDrag.from !== index ? 'ring-2 ring-[#ff5b4f]' : ''}`}
                   >
-                    <span className="grid h-7 w-7 place-items-center rounded-full bg-[#223c72] text-[10px] font-black text-white">{index + 1}</span>
+                    <span className="grid h-7 w-7 place-items-center rounded-full bg-[#b85d53] text-[10px] font-black text-white">{index + 1}</span>
                     <img src={item.places.image_url || '/login-spring-bg.png'} alt={item.places.name} className="h-12 w-[52px] rounded-lg object-cover" />
                     <div className="min-w-0">
                       <h3 className="truncate text-[12px] font-black">{item.places.name}</h3>
-                      <p className="mt-1 text-[9px] text-[#8d95a1]">{ui.minutes.replace('{minutes}', String(item.stay_minutes))}</p>
-                      <label className="mt-2 block text-[9px] text-[#68716e]">{planner.stay}<select disabled={saving} aria-label={`${item.places.name} ${planner.stay}`} value={item.stay_minutes} onChange={event => updateItem(index, { stay_minutes: Number(event.target.value) })} className="ml-1 min-h-10 rounded bg-[#f4f5f6] text-[10px]">{Array.from(new Set([15, 30, 45, 60, 90, 120, 180, 240, item.stay_minutes])).sort((a, b) => a - b).map(value => <option key={value} value={value}>{value}</option>)}</select></label>
+                      <p className="mt-1 text-[10px] text-[#8d95a1]">{ui.minutes.replace('{minutes}', String(item.stay_minutes))}</p>
+                      <label className="mt-2 block text-[10px] text-[#68716e]">{planner.stay}<select disabled={saving} aria-label={`${item.places.name} ${planner.stay}`} value={item.stay_minutes} onChange={event => updateItem(index, { stay_minutes: Number(event.target.value) })} className="ml-1 min-h-10 rounded bg-[#f4f5f6] text-[10px]">{Array.from(new Set([15, 30, 45, 60, 90, 120, 180, 240, item.stay_minutes])).sort((a, b) => a - b).map(value => <option key={value} value={value}>{value}</option>)}</select></label>
                       <div className="mt-1 flex gap-1">
                         <select value={item.visit_date} onChange={event => updateItem(index, { visit_date: event.target.value })} aria-label={ui.visitDate.replace('{name}', item.places.name)} className="min-w-0 max-w-[110px] rounded bg-[#f4f5f6] px-1 py-1 text-[8px]">
                           {tripDays.map(day => <option key={day} value={day}>{day}</option>)}

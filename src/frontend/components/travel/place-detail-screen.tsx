@@ -176,13 +176,13 @@ export function PlaceDetailScreen({ contentId }: { contentId: string }) {
       </div>
 
       <div className="space-y-4 px-5 pt-5">
-        {notice && <p className="rounded-xl bg-[#fff0eb] p-3 text-[10px] font-bold text-[#9b4d45]" role="status">{notice}</p>}
+        {notice && <p className="rounded-xl bg-[#fff0eb] p-3 text-[13px] font-bold text-[#9b4d45]" role="status">{notice}</p>}
         <section className="rounded-2xl bg-white p-5 shadow-sm">
           <h2 className="text-[14px] font-black">{ui.information}</h2>
           <p className="mt-3 whitespace-pre-line text-[12px] leading-6 text-[#616a67]">{place.overview || place.description}</p>
           <dl className="mt-4 space-y-2 text-[10px]">
             {place.openingHours && <div><dt className="font-black">{ui.hours}</dt><dd className="mt-1 text-[#6f7875]">{place.openingHours}</dd></div>}
-            {place.phone && <div><dt className="font-black">{ui.phone}</dt><dd className="mt-1 text-[#6f7875]">{place.phone}</dd></div>}
+            {place.phone && <div><dt className="text-[14px] font-black">{ui.phone}</dt><dd className="mt-1 text-[14px] font-semibold text-[#6f7875]">{place.phone}</dd></div>}
           </dl>
         </section>
 
