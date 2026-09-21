@@ -263,7 +263,7 @@ function HomeScreen({
             <button key={place.id} className="text-center" onClick={() => onOpenPlace(place.contentId)} type="button">
               <span className="relative block aspect-square rounded-lg bg-[#d8d8d8]">
                 <TourThumbnail className="h-full w-full rounded-lg object-cover opacity-80" src={place.image} alt={place.name} sizes="100px" />
-                <span className="absolute left-1 top-1 grid h-6 w-6 place-items-center rounded-full bg-[#e35d4f] text-xs font-black tabular-nums text-white">{index + 1}</span>
+                <span className="absolute left-1 top-1 grid h-6 w-6 place-items-center rounded-full bg-[#223c72] text-xs font-black tabular-nums text-white">{index + 1}</span>
               </span>
               <span className="mt-3 block truncate text-[11px] font-bold">{place.name}</span>
             </button>
@@ -271,7 +271,7 @@ function HomeScreen({
         </div>
 
         {recentPlace && (
-          <button type="button" onClick={() => { window.location.href = `/places/${encodeURIComponent(recentPlace.contentId)}`; }} className="mx-1 mt-5 flex w-[calc(100%-8px)] items-center gap-3 rounded-xl bg-[#b85d53] p-3 text-left text-white">
+          <button type="button" onClick={() => { window.location.href = `/places/${encodeURIComponent(recentPlace.contentId)}`; }} className="mx-1 mt-5 flex w-[calc(100%-8px)] items-center gap-3 rounded-xl bg-[#223c72] p-3 text-left text-white">
             <TourThumbnail src={recentPlace.image} alt={recentPlace.name} className="h-12 w-14 rounded-lg object-cover" sizes="56px" />
             <span className="min-w-0">
               <span className="block text-[9px] font-black text-white/60">{messages.home.recentPlace}</span>
@@ -346,7 +346,7 @@ function CoursePreview({ image, title, href }: { image?: string; title: string; 
     <article>
       <Link href={href} className="block transition-transform active:scale-[0.98]">
         <span className="block h-[118px] overflow-hidden rounded-lg bg-[#d8d8d8]">
-          {image && <TourThumbnail className="h-full w-full object-cover opacity-100" src={image} alt="" />}
+          {image && <TourThumbnail className="h-full w-full object-cover opacity-65" src={image} alt="" />}
         </span>
         <span className="mt-3 block text-[11px] font-bold">{title}</span>
       </Link>
